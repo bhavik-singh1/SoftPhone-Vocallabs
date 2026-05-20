@@ -1,0 +1,42 @@
+// Central env config. docker-compose passes the whole .env via env_file.
+export const config = {
+  port: parseInt(process.env.BACKEND_PORT || "3000", 10),
+  jwtSecret: process.env.JWT_SECRET || "dev-secret",
+
+  login: {
+    user: process.env.APP_LOGIN_USER || "agent",
+    password: process.env.APP_LOGIN_PASSWORD || "agent123",
+  },
+
+  // SIP details handed to the browser so SIP.js can register over WSS.
+  sip: {
+    publicHost: process.env.PUBLIC_HOST || "softphone.local",
+    wssPort: 8443,
+    user: process.env.SOFTPHONE_USER || "webrtc",
+    password: process.env.SOFTPHONE_PASSWORD || "",
+  },
+
+  // ICE servers for the browser (coturn). On a single LAN this is optional.
+  turn: {
+    publicIp: process.env.PUBLIC_IP || "127.0.0.1",
+    secret: process.env.TURN_SECRET || "",
+    realm: process.env.TURN_REALM || "softphone.local",
+  },
+
+  ami: {
+    host: process.env.AMI_HOST || "asterisk",
+    port: parseInt(process.env.AMI_PORT || "5038", 10),
+    user: process.env.AMI_USER || "backend",
+    password: process.env.AMI_PASSWORD || "",
+  },
+
+  db: {
+    host: process.env.POSTGRES_HOST || "db",
+    port: parseInt(process.env.POSTGRES_PORT || "5432", 10),
+    user: process.env.POSTGRES_USER || "softphone",
+    password: process.env.POSTGRES_PASSWORD || "",
+    database: process.env.POSTGRES_DB || "softphone",
+  },
+
+  recordingsDir: process.env.RECORDINGS_DIR || "/recordings",
+};

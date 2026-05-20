@@ -1,0 +1,152 @@
+# ──────────────────────────────────────────────────────────────────────────
+#  SoftPhone-Vocallabs — full VoIP stack
+#  Browser (SIP.js/WebRTC) → Kamailio (WSS edge) + RTPEngine (media) →
+#  Asterisk (PBX + trunk + recording) → PSTN.  Backend + React on the side.
+#
+#  Run from inside WSL2:  docker compose up -d --build
+# ──────────────────────────────────────────────────────────────────────────
+
+services:
+  # ===== Postgres: users, contacts, call logs (CDR) =====
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [softphone-net]
+
+  # ===== Asterisk: PBX, PSTN trunk, dialplan, MixMonitor recording, AMI =====
+  asterisk:
+    build: ./infra/asterisk
+    restart: unless-stopped
+    # envsubst at container start fills the trunk/secret placeholders in conf.
+    environment:
+      TRUNK_HOST: ${TRUNK_HOST}
+      TRUNK_PORT: ${TRUNK_PORT}
+      TRUNK_USERNAME: ${TRUNK_USERNAME}
+      TRUNK_PASSWORD: ${TRUNK_PASSWORD}
+      TRUNK_PREFIX: ${TRUNK_PREFIX}
+      TRUNK_CALLER_ID: ${TRUNK_CALLER_ID}
+      SOFTPHONE_USER: ${SOFTPHONE_USER}
+      SOFTPHONE_PASSWORD: ${SOFTPHONE_PASSWORD}
+      AMI_USER: ${AMI_USER}
+      AMI_PASSWORD: ${AMI_PASSWORD}
+      PUBLIC_IP: ${PUBLIC_IP}
+    volumes:
+      - ./infra/asterisk/conf:/etc/asterisk/templates:ro
+      - ./infra/asterisk/entrypoint.sh:/entrypoint.sh:ro
+      - recordings:/var/spool/asterisk/recordings
+    ports:
+      - "5038:5038"                  # AMI (backend reads call events)
+      - "5062:5060/udp"              # SIP UDP (Kamailio talks to this; host-mapped for debugging)
+      - "10000-10050:10000-10050/udp" # RTP media (Asterisk ↔ RTPEngine)
+    networks: [softphone-net]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ===== RTPEngine: bridges WebRTC DTLS-SRTP ↔ plain RTP for Asterisk =====
+  rtpengine:
+    image: drachtio/rtpengine:latest
+    restart: unless-stopped
+    # Two interfaces, both BOUND to the container's real IP (so Docker's
+    # published ports actually reach it), but advertising different addresses:
+    #   internal -> the container IP (Asterisk, on the docker network, reaches it)
+    #   external -> ${PUBLIC_IP} (the browser-reachable address, e.g. 127.0.0.1
+    #               locally via WSL port-forwarding, or the public IP on a VPS)
+    # Userspace forwarding (no kernel module needed at this scale).
+    command:
+      - sh
+      - -c
+      - >
+        rtpengine
+        --interface=internal/$$(hostname -i)
+        --interface=external/$$(hostname -i)!${PUBLIC_IP}
+        --listen-ng=0.0.0.0:22222
+        --port-min=30000 --port-max=30050
+        --log-level=6 --foreground --log-stderr
+    ports:
+      - "30000-30050:30000-30050/udp" # public media ports (browser ↔ rtpengine)
+    networks: [softphone-net]
+
+  # ===== Kamailio: SIP-over-WSS edge, RTPEngine control, relay to Asterisk =====
+  kamailio:
+    build: ./infra/kamailio
+    restart: unless-stopped
+    environment:
+      PUBLIC_IP: ${PUBLIC_IP}
+      ASTERISK_HOST: asterisk
+      RTPENGINE_HOST: rtpengine
+    volumes:
+      - ./infra/kamailio/kamailio.cfg:/etc/kamailio/kamailio.cfg:ro
+      - ./infra/kamailio/certs:/etc/kamailio/certs:ro
+      - ./infra/kamailio/tls.cfg:/etc/kamailio/tls.cfg:ro
+    ports:
+      - "8443:8443"                  # WSS (browser SIP signaling)
+      - "5060:5060/udp"              # SIP UDP (optional, debugging)
+    networks: [softphone-net]
+    depends_on: [asterisk, rtpengine]
+
+  # ===== coturn: STUN/TURN for browser NAT traversal =====
+  # Configured via CLI flags so .env values interpolate. Mainly needed on a
+  # VPS / across NAT; on a single LAN, host ICE candidates usually suffice.
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    command: >
+      -n --log-file=stdout --no-tls --no-dtls --fingerprint
+      --listening-port=3478 --min-port=49160 --max-port=49200
+      --use-auth-secret --static-auth-secret=${TURN_SECRET}
+      --realm=${TURN_REALM} --external-ip=${PUBLIC_IP}
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "49160-49200:49160-49200/udp" # TURN relay range
+    networks: [softphone-net]
+
+  # ===== Backend: auth, AMI live-event bridge, WS push, CDR/recordings API =====
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - recordings:/recordings:ro     # serve recordings for playback/download
+    ports:
+      - "${BACKEND_PORT}:3000"
+    networks: [softphone-net]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ===== Frontend: React + SIP.js (Vite dev server over HTTPS) =====
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    environment:
+      VITE_PUBLIC_HOST: ${PUBLIC_HOST}
+      VITE_BACKEND_PORT: ${BACKEND_PORT}
+    volumes:
+      - ./frontend:/app                   # live source for HMR (instant UI changes)
+      - /app/node_modules                 # keep the container's Linux deps
+      - ./infra/kamailio/certs:/certs:ro  # reuse mkcert cert for HTTPS dev server
+    ports:
+      - "5173:5173"
+    networks: [softphone-net]
+    depends_on: [backend]
+
+networks:
+  softphone-net:
+    driver: bridge
+
+volumes:
+  pg-data:
+  recordings:

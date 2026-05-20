@@ -1,0 +1,138 @@
+import React, { useEffect, useRef, useState } from "react";
+import { SessionState } from "sip.js";
+import { api, getToken, clearToken, connectEvents } from "./api.js";
+import { SipPhone } from "./lib/sipClient.js";
+import { useStore } from "./store.js";
+import Login from "./components/Login.jsx";
+import Dialer from "./components/Dialer.jsx";
+import InCall from "./components/InCall.jsx";
+import CallHistory from "./components/CallHistory.jsx";
+
+export default function App() {
+  const [loggedIn, setLoggedIn] = useState(!!getToken());
+  const phoneRef = useRef(null);
+  const wsRef = useRef(null);
+
+  const {
+    registered, currentCall, history, error,
+    setRegistered, setError, startCall, updateCall, endCall, setHistory,
+  } = useStore();
+
+  const refreshHistory = () => api.calls().then(setHistory).catch(() => {});
+
+  // Bring up the SIP client + live-event stream after login.
+  useEffect(() => {
+    if (!loggedIn) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const sipConfig = await api.sipConfig();
+        const phone = new SipPhone(sipConfig, {
+          onRegistered: () => setRegistered(true),
+          onUnregistered: () => setRegistered(false),
+          onSessionState: (state) => {
+            if (state === SessionState.Establishing) updateCall({ status: "dialing" });
+            if (state === SessionState.Established)
+              updateCall({ status: "answered", answeredAt: Date.now() });
+            if (state === SessionState.Terminated) {
+              endCall();
+              refreshHistory();
+            }
+          },
+        });
+        if (cancelled) return;
+        phoneRef.current = phone;
+        await phone.start();
+
+        // Live, server-truth call status from the backend (AMI-derived).
+        wsRef.current = connectEvents((evt) => {
+          if (evt.type !== "call") return;
+          if (["dialing", "ringing", "answered"].includes(evt.status)) {
+            updateCall({ status: evt.status });
+          }
+          if (["ended", "no-answer", "failed"].includes(evt.status)) {
+            refreshHistory();
+          }
+        });
+
+        refreshHistory();
+      } catch (e) {
+        setError(e.message);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      wsRef.current?.close();
+      phoneRef.current?.stop();
+    };
+  }, [loggedIn]);
+
+  const handleLogin = () => setLoggedIn(true);
+  const handleLogout = async () => {
+    await phoneRef.current?.stop();
+    clearToken();
+    setLoggedIn(false);
+    window.location.reload();
+  };
+
+  const handleDial = async (number) => {
+    if (!number || currentCall) return;
+    startCall(number);
+    try {
+      await phoneRef.current.call(number);
+    } catch (e) {
+      setError(e.message);
+      endCall();
+    }
+  };
+
+  const handleHangup = () => phoneRef.current?.hangup();
+  const handleMute = () => {
+    const muted = !currentCall?.muted;
+    phoneRef.current?.setMuted(muted);
+    updateCall({ muted });
+  };
+  const handleDtmf = (tone) => phoneRef.current?.sendDtmf(tone);
+  const handleSpeaker = (on) => phoneRef.current?.setSpeaker(on);
+
+  if (!loggedIn) return <Login onLogin={handleLogin} />;
+
+  return (
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">📞 SoftPhone <span>· Vocallabs</span></div>
+        <div className="status">
+          <span className={`dot ${registered ? "on" : "off"}`} />
+          {registered ? "Registered" : "Connecting…"}
+          <button className="link" onClick={handleLogout}>Logout</button>
+        </div>
+      </header>
+
+      {error && <div className="banner error">{error}</div>}
+
+      <main className="layout">
+        <section className="phone-col">
+          <div className="device">
+            <div className="notch" />
+            {currentCall ? (
+              <InCall
+                call={currentCall}
+                onHangup={handleHangup}
+                onMute={handleMute}
+                onDtmf={handleDtmf}
+                onSpeaker={handleSpeaker}
+              />
+            ) : (
+              <Dialer onDial={handleDial} disabled={!registered} />
+            )}
+          </div>
+        </section>
+        <section className="history-col">
+          <CallHistory history={history} />
+        </section>
+      </main>
+    </div>
+  );
+}

@@ -1,0 +1,6 @@
+# This project runs in Linux containers — force LF so shell scripts and
+# configs never get CRLF (which breaks bash shebangs and config parsers).
+* text=auto eol=lf
+*.sh    text eol=lf
+*.cfg   text eol=lf
+*.conf  text eol=lf
