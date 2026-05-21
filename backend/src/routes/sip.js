@@ -21,24 +21,34 @@ function turnCredentials() {
 // real SIP client). Keep this account distinct from the trunk, and in
 // production issue short-lived per-session SIP credentials instead.
 sipRouter.get("/sip-config", requireAuth, (req, res) => {
-  const { username, credential } = turnCredentials();
   res.json({
     wsServer: `wss://${config.sip.publicHost}:${config.sip.wssPort}`,
     sipUri: `sip:${config.sip.user}@${config.sip.publicHost}`,
     authorizationUser: config.sip.user,
     password: config.sip.password,
     displayName: config.sip.user,
-    // STUN + TURN. Restrictive networks (mobile/CGNAT) block UDP to high media
-    // ports, so the browser must relay everything through TURN on :3478 (which
-    // such networks allow). The EC2 NAT-hairpin route (see deploy-vps.sh) lets
-    // RTPEngine reach coturn's relay back on the same host.
-    iceServers: [
-      { urls: `stun:${config.turn.publicIp}:3478` },
-      {
-        urls: `turn:${config.turn.publicIp}:3478?transport=udp`,
-        username,
-        credential,
-      },
-    ],
+    iceServers: buildIceServers(),
   });
 });
+
+// Prefer an external managed TURN (metered.ca) when configured — it lives on a
+// different public IP, so RTPEngine's outbound is cleanly NAT'd to the VPS's
+// public IP (no same-host hairpin) and relay works on any client network,
+// including CGNAT/mobile. Falls back to the on-host coturn otherwise.
+function buildIceServers() {
+  const m = config.meteredTurn;
+  if (m.user && m.cred) {
+    return [
+      { urls: "stun:stun.relay.metered.ca:80" },
+      { urls: `turn:${m.host}:80`, username: m.user, credential: m.cred },
+      { urls: `turn:${m.host}:80?transport=tcp`, username: m.user, credential: m.cred },
+      { urls: `turn:${m.host}:443`, username: m.user, credential: m.cred },
+      { urls: `turns:${m.host}:443?transport=tcp`, username: m.user, credential: m.cred },
+    ];
+  }
+  const { username, credential } = turnCredentials();
+  return [
+    { urls: `stun:${config.turn.publicIp}:3478` },
+    { urls: `turn:${config.turn.publicIp}:3478?transport=udp`, username, credential },
+  ];
+}

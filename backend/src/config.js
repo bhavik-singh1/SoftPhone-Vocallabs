@@ -23,6 +23,14 @@ export const config = {
     realm: process.env.TURN_REALM || "softphone.local",
   },
 
+  // External managed TURN (metered.ca). Off-host TURN avoids the same-host
+  // NAT-hairpin problem and works on restrictive/CGNAT client networks.
+  meteredTurn: {
+    host: process.env.METERED_TURN_HOST || "global.relay.metered.ca",
+    user: process.env.METERED_TURN_USER || "",
+    cred: process.env.METERED_TURN_CRED || "",
+  },
+
   ami: {
     host: process.env.AMI_HOST || "asterisk",
     port: parseInt(process.env.AMI_PORT || "5038", 10),
