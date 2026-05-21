@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # =============================================================================
 #  VPS deploy — run ON the VPS (Ubuntu), from the repo root, as root:
-#     sudo bash deploy-vps.sh <your-domain.duckdns.org>
+#     sudo bash deploy-vps.sh <your-domain>
+#  e.g.  sudo bash deploy-vps.sh softpad.tech
 #
 #  Prereqs (do these first):
-#   1. The domain must already point to THIS server's public IP (set it in
-#      DuckDNS) — Let's Encrypt verifies it over port 80.
+#   1. The domain must already point to THIS server's public IP (an A record at
+#      your DNS provider — for Cloudflare set it to "DNS only" / grey cloud, NOT
+#      proxied; the proxy can't carry WSS:8443 or RTP/UDP). Let's Encrypt
+#      verifies it over port 80, so 80 must be reachable + the DNS propagated.
 #   2. A .env file must exist here with your real TRUNK_* credentials
 #      (copy .env.example -> .env and fill the trunk block).
 #
@@ -78,7 +81,7 @@ docker compose ps
 cat <<EOF
 
 ---------------------------------------------------------------
- Deployed. Open:  https://${DOMAIN}:5173   (login: agent / agent123)
+ Deployed. Open:  https://${DOMAIN}:5173   (login: admin / admin123)
 
  Verify trunk:
    docker compose exec asterisk asterisk -rx "pjsip show registrations"
