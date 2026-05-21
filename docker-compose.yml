@@ -148,6 +148,12 @@ services:
 networks:
   softphone-net:
     driver: bridge
+    # Pin the subnet so the gateway is always 172.18.0.1 — Kamailio uses that
+    # to reach RTPEngine's control socket on the host network.
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
+          gateway: 172.18.0.1
 
 volumes:
   pg-data:

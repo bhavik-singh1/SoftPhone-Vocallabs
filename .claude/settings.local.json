@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wsl.exe -d Ubuntu -- bash -lc 'ssh -i ~/softphone.pem -o StrictHostKeyChecking=no ubuntu@13.127.11.207 \"echo ===RTPENGINE LISTENING ON HOST===; sudo ss -lunp 2>/dev/null | grep 22222 || echo NOT-LISTENING; echo ===host.docker.internal resolves to===; cd ~/SoftPhone-Vocallabs && sudo docker compose exec -T kamailio getent hosts host.docker.internal 2>/dev/null || echo NO-RESOLVE; echo ===docker bridge gw===; ip -4 addr show | grep -E \\\\\"br-|docker0\\\\\" | grep inet\"')"
+    ]
+  }
+}
