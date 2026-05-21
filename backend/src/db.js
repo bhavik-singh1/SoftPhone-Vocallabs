@@ -32,6 +32,11 @@ CREATE TABLE IF NOT EXISTS calls (
   duration    INTEGER DEFAULT 0                  -- seconds, talk time
 );
 
+-- Migration: the calls table predates the per-user owner column. Add it if an
+-- older deployment already created the table (CREATE TABLE IF NOT EXISTS above
+-- is a no-op there, so the column/index must be added explicitly).
+ALTER TABLE calls ADD COLUMN IF NOT EXISTS owner TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_calls_owner_started
   ON calls (owner, started_at DESC);
 `;
