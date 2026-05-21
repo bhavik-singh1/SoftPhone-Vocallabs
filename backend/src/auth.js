@@ -1,4 +1,4 @@
-import jwt from "jsonwebtoken";
+ import jwt from "jsonwebtoken";
 import { config } from "./config.js";
 
 // Demo auth: a single configured user. Swap for a real user store later.

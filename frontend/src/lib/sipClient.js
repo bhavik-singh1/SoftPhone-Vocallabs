@@ -27,7 +27,13 @@ export class SipPhone {
       authorizationPassword: this.cfg.password,
       transportOptions: { server: this.cfg.wsServer },
       sessionDescriptionHandlerFactoryOptions: {
-        peerConnectionConfiguration: { iceServers: this.cfg.iceServers },
+        peerConnectionConfiguration: {
+          iceServers: this.cfg.iceServers,
+          // Force ALL media through the TURN relay. On CGNAT/symmetric NAT,
+          // direct (host/srflx) candidate pairs can be one-way; relay-only
+          // guarantees every call uses the consistent, working relay path.
+          iceTransportPolicy: "relay",
+        },
       },
     });
 
