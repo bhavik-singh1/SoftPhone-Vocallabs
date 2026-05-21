@@ -20,6 +20,7 @@ export class SipPhone {
     this.ua = null;
     this.registerer = null;
     this.session = null;
+    this._reconnectTimer = null;
     this.remoteAudio = document.getElementById("remote-audio");
   }
 
@@ -34,6 +35,24 @@ export class SipPhone {
       delegate: {
         // Inbound call: carrier dialed our DID → Asterisk is ringing the browser.
         onInvite: (invitation) => this._onIncoming(invitation),
+        // Mobile networks drop the WebSocket often. On every (re)connect, refresh
+        // the SIP registration so our contact always points at the LIVE socket.
+        // A stale contact (old/dead connection) is exactly what makes an inbound
+        // call fail with "server error" until a restart forces a fresh connect.
+        onConnect: () => {
+          this.registerer?.register().catch(() => {});
+        },
+        // WebSocket dropped → mark unregistered and reconnect (which re-registers
+        // via onConnect above). Debounced so we don't hammer a downed server.
+        onDisconnect: (error) => {
+          this.cb.onUnregistered?.();
+          if (error) {
+            clearTimeout(this._reconnectTimer);
+            this._reconnectTimer = setTimeout(() => {
+              this.ua?.reconnect().catch(() => {});
+            }, 3000);
+          }
+        },
       },
       sessionDescriptionHandlerFactoryOptions: {
         peerConnectionConfiguration: {
