@@ -2,16 +2,21 @@ import {
   UserAgent,
   Registerer,
   Inviter,
+  Invitation,
   SessionState,
   RegistererState,
 } from "sip.js";
 
-// Thin wrapper over SIP.js: register over WSS, place/hang up outbound calls,
-// and expose mute / hold / DTMF. Audio is local (true WebRTC softphone).
+// Thin wrapper over SIP.js: register over WSS, place/receive calls, and expose
+// mute / hold / DTMF. Audio is local (true WebRTC softphone). Both directions:
+//   - outbound: call() builds an Inviter (dashboard → PSTN trunk).
+//   - inbound:  the UA delegate's onInvite fires when the carrier dials our DID
+//               (Asterisk rings the browser); answer()/hangup() control it.
 export class SipPhone {
   constructor(sipConfig, callbacks = {}) {
     this.cfg = sipConfig;
-    this.cb = callbacks; // { onRegistered, onUnregistered, onSessionState }
+    // { onRegistered, onUnregistered, onSessionState, onIncoming }
+    this.cb = callbacks;
     this.ua = null;
     this.registerer = null;
     this.session = null;
@@ -26,6 +31,10 @@ export class SipPhone {
       authorizationUsername: this.cfg.authorizationUser,
       authorizationPassword: this.cfg.password,
       transportOptions: { server: this.cfg.wsServer },
+      delegate: {
+        // Inbound call: carrier dialed our DID → Asterisk is ringing the browser.
+        onInvite: (invitation) => this._onIncoming(invitation),
+      },
       sessionDescriptionHandlerFactoryOptions: {
         peerConnectionConfiguration: {
           iceServers: this.cfg.iceServers,
@@ -63,6 +72,29 @@ export class SipPhone {
     return inviter;
   }
 
+  // --- Inbound ---
+  _onIncoming(invitation) {
+    // One call at a time: if already busy, reject with 486 Busy Here.
+    if (this.session) {
+      invitation.reject({ statusCode: 486 });
+      return;
+    }
+    this.session = invitation;
+    const number = invitation.remoteIdentity?.uri?.user || "Unknown";
+    this._wireSession(invitation, number);
+    this.cb.onIncoming?.(number);
+  }
+
+  // Answer a ringing inbound call (mic prompt happens here).
+  async answer() {
+    if (!(this.session instanceof Invitation)) return;
+    await this.session.accept({
+      sessionDescriptionHandlerOptions: {
+        constraints: { audio: true, video: false },
+      },
+    });
+  }
+
   _wireSession(session, number) {
     session.stateChange.addListener((state) => {
       this.cb.onSessionState?.(state, number);
@@ -83,13 +115,16 @@ export class SipPhone {
     this.remoteAudio.play().catch(() => {});
   }
 
+  // Ends/cancels/declines whatever the current session is, based on its state.
   hangup() {
     if (!this.session) return;
     const s = this.session;
     switch (s.state) {
       case SessionState.Initial:
       case SessionState.Establishing:
-        s.cancel?.();
+        // Inbound not-yet-answered → reject (4xx); outbound not-yet-answered → cancel.
+        if (s instanceof Invitation) s.reject?.();
+        else s.cancel?.();
         break;
       case SessionState.Established:
         s.bye?.();

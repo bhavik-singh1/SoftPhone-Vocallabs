@@ -6,6 +6,7 @@ import { useStore } from "./store.js";
 import Login from "./components/Login.jsx";
 import Dialer from "./components/Dialer.jsx";
 import InCall from "./components/InCall.jsx";
+import IncomingCall from "./components/IncomingCall.jsx";
 import CallHistory from "./components/CallHistory.jsx";
 
 export default function App() {
@@ -14,8 +15,9 @@ export default function App() {
   const wsRef = useRef(null);
 
   const {
-    registered, currentCall, history, error,
+    registered, currentCall, incomingCall, history, error,
     setRegistered, setError, startCall, updateCall, endCall, setHistory,
+    setIncoming, clearIncoming, acceptIncoming,
   } = useStore();
 
   const refreshHistory = () => api.calls().then(setHistory).catch(() => {});
@@ -31,11 +33,20 @@ export default function App() {
         const phone = new SipPhone(sipConfig, {
           onRegistered: () => setRegistered(true),
           onUnregistered: () => setRegistered(false),
+          // Inbound call ringing → show the accept/decline screen.
+          onIncoming: (number) => setIncoming(number),
           onSessionState: (state) => {
-            if (state === SessionState.Establishing) updateCall({ status: "dialing" });
-            if (state === SessionState.Established)
-              updateCall({ status: "answered", answeredAt: Date.now() });
+            const st = useStore.getState();
+            if (state === SessionState.Establishing && st.currentCall) {
+              updateCall({ status: "dialing" });
+            }
+            if (state === SessionState.Established) {
+              // Inbound just got answered → promote ring to the active call.
+              if (st.incomingCall && !st.currentCall) acceptIncoming();
+              else updateCall({ status: "answered", answeredAt: Date.now() });
+            }
             if (state === SessionState.Terminated) {
+              clearIncoming();
               endCall();
               refreshHistory();
             }
@@ -88,6 +99,8 @@ export default function App() {
     }
   };
 
+  const handleAccept = () => phoneRef.current?.answer();
+  const handleDecline = () => phoneRef.current?.hangup();
   const handleHangup = () => phoneRef.current?.hangup();
   const handleMute = () => {
     const muted = !currentCall?.muted;
@@ -116,7 +129,13 @@ export default function App() {
         <section className="phone-col">
           <div className="device">
             <div className="notch" />
-            {currentCall ? (
+            {incomingCall ? (
+              <IncomingCall
+                number={incomingCall.number}
+                onAccept={handleAccept}
+                onDecline={handleDecline}
+              />
+            ) : currentCall ? (
               <InCall
                 call={currentCall}
                 onHangup={handleHangup}

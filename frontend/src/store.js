@@ -12,8 +12,10 @@ const STATUS_RANK = {
 // UI state. The SipPhone instance itself lives in a ref in App (not in state).
 export const useStore = create((set) => ({
   registered: false,
-  // currentCall: { number, status, answeredAt, muted } | null
+  // currentCall: { number, status, answeredAt, muted, direction } | null
   currentCall: null,
+  // incomingCall: { number } while an inbound call is ringing (pre-answer)
+  incomingCall: null,
   history: [],
   error: null,
 
@@ -22,8 +24,28 @@ export const useStore = create((set) => ({
 
   startCall: (number) =>
     set({
-      currentCall: { number, status: "connecting", answeredAt: null, muted: false },
+      currentCall: { number, status: "connecting", answeredAt: null, muted: false, direction: "outbound" },
     }),
+
+  // Inbound call ringing (carrier dialed our DID).
+  setIncoming: (number) => set({ incomingCall: { number } }),
+  clearIncoming: () => set({ incomingCall: null }),
+  // Promote a ringing inbound call to the active (answered) slot.
+  acceptIncoming: () =>
+    set((s) =>
+      s.incomingCall
+        ? {
+            currentCall: {
+              number: s.incomingCall.number,
+              status: "answered",
+              answeredAt: Date.now(),
+              muted: false,
+              direction: "inbound",
+            },
+            incomingCall: null,
+          }
+        : {}
+    ),
   updateCall: (patch) =>
     set((s) => {
       if (!s.currentCall) return {};
