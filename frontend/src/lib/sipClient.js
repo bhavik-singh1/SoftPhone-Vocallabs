@@ -147,18 +147,43 @@ export class SipPhone {
   }
 
   // Ends/cancels/declines whatever the current session is, based on its state.
+  // The BYE must leave the browser the INSTANT the user hangs up. The earlier
+  // ~15-20s "mobile won't disconnect" bug was SIP.js DEFERRING the BYE: calling
+  // bye() while the session is still Establishing (accept() in flight, or the
+  // dialog's confirming ACK not yet settled) makes SIP.js queue the BYE until
+  // the session reaches a terminal-eligible state — so the carrier leg lingered
+  // until a timeout. We now drop the local session reference immediately and
+  // dispatch the right teardown for the EXACT state, retrying once a tick later
+  // for the in-flight-accept case so the BYE goes out as soon as it's legal.
   hangup() {
     if (!this.session) return;
     const s = this.session;
+    // Detach our reference up front so a late state-change can't re-enter here.
+    this.session = null;
+    if (this.remoteAudio) this.remoteAudio.srcObject = null;
+    this._endSession(s);
+  }
+
+  _endSession(s, retried = false) {
     switch (s.state) {
       case SessionState.Initial:
+        // Inbound not-yet-answered → reject (4xx); outbound not-yet-sent → cancel.
+        if (s instanceof Invitation) s.reject?.().catch(() => {});
+        else s.cancel?.().catch(() => {});
+        break;
       case SessionState.Establishing:
-        // Inbound not-yet-answered → reject (4xx); outbound not-yet-answered → cancel.
-        if (s instanceof Invitation) s.reject?.();
-        else s.cancel?.();
+        // Outbound still ringing → CANCEL. Inbound mid-accept (we already sent
+        // 200) → the dialog isn't confirmed, so bye() would queue; wait one tick
+        // for the ACK, then BYE. This is the path that caused the long delay.
+        if (s instanceof Invitation) {
+          if (!retried) setTimeout(() => this._endSession(s, true), 0);
+          else s.bye?.().catch(() => {});
+        } else {
+          s.cancel?.().catch(() => {});
+        }
         break;
       case SessionState.Established:
-        s.bye?.();
+        s.bye?.().catch(() => {});
         break;
       default:
         break;

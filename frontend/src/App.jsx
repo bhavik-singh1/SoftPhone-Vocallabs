@@ -120,11 +120,14 @@ export default function App() {
     clearIncoming();
     phoneRef.current?.hangup();
   };
-  // Hangup: clear the call from the UI INSTANTLY, then send the SIP BYE in the
-  // background — so the red button doesn't wait on the BYE round-trip.
+  // Hangup: fire the SIP BYE FIRST (so the carrier/mobile leg tears down with
+  // zero delay), THEN clear the UI. Order matters — clearing first triggers a
+  // React re-render that unmounts InCall on the same tick; doing the BYE first
+  // guarantees it's dispatched before any render churn. (UI still clears
+  // instantly since both run synchronously.)
   const handleHangup = () => {
-    endCall();
     phoneRef.current?.hangup();
+    endCall();
   };
   const handleMute = () => {
     const muted = !currentCall?.muted;
