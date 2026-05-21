@@ -8,6 +8,9 @@ import Dialer from "./components/Dialer.jsx";
 import InCall from "./components/InCall.jsx";
 import IncomingCall from "./components/IncomingCall.jsx";
 import CallHistory from "./components/CallHistory.jsx";
+import { BrandMark, LogOutIcon } from "./components/icons.jsx";
+
+const USER_KEY = "sp_user";
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(!!getToken());
@@ -15,12 +18,15 @@ export default function App() {
   const wsRef = useRef(null);
 
   const {
-    registered, currentCall, incomingCall, history, error,
-    setRegistered, setError, startCall, updateCall, endCall, setHistory,
-    setIncoming, clearIncoming, acceptIncoming,
+    registered, currentCall, incomingCall, username, historyVersion, error,
+    setRegistered, setUsername, setError, startCall, updateCall, endCall,
+    setIncoming, clearIncoming, acceptIncoming, bumpHistory,
   } = useStore();
 
-  const refreshHistory = () => api.calls().then(setHistory).catch(() => {});
+  // Restore the display name across reloads.
+  useEffect(() => {
+    if (loggedIn && !username) setUsername(localStorage.getItem(USER_KEY) || "");
+  }, [loggedIn, username, setUsername]);
 
   // Bring up the SIP client + live-event stream after login.
   useEffect(() => {
@@ -33,7 +39,6 @@ export default function App() {
         const phone = new SipPhone(sipConfig, {
           onRegistered: () => setRegistered(true),
           onUnregistered: () => setRegistered(false),
-          // Inbound call ringing → show the accept/decline screen.
           onIncoming: (number) => setIncoming(number),
           onSessionState: (state) => {
             const st = useStore.getState();
@@ -41,10 +46,7 @@ export default function App() {
               updateCall({ status: "dialing" });
             }
             if (state === SessionState.Established) {
-              // Inbound just got answered → promote ring to the active call.
               if (st.incomingCall && !st.currentCall) acceptIncoming();
-              // Only set answered/timer if not already answered (the optimistic
-              // Accept may have set it already — don't restart the timer).
               else if (st.currentCall && st.currentCall.status !== "answered") {
                 updateCall({ status: "answered", answeredAt: Date.now() });
               }
@@ -52,7 +54,7 @@ export default function App() {
             if (state === SessionState.Terminated) {
               clearIncoming();
               endCall();
-              refreshHistory();
+              bumpHistory();
             }
           },
         });
@@ -60,24 +62,18 @@ export default function App() {
         phoneRef.current = phone;
         await phone.start();
 
-        // Live, server-truth call status from the backend (AMI-derived).
         wsRef.current = connectEvents((evt) => {
           if (evt.type !== "call") return;
           if (["dialing", "ringing", "answered"].includes(evt.status)) {
             updateCall({ status: evt.status });
           }
           if (["ended", "no-answer", "failed"].includes(evt.status)) {
-            // Server truth: the call ended (often the REMOTE party hung up).
-            // Clear the UI instantly and tear down the local SIP session, rather
-            // than waiting for a SIP BYE to reach the browser (which can lag).
             clearIncoming();
             endCall();
             phoneRef.current?.hangup();
-            refreshHistory();
+            bumpHistory();
           }
         });
-
-        refreshHistory();
       } catch (e) {
         setError(e.message);
       }
@@ -90,10 +86,15 @@ export default function App() {
     };
   }, [loggedIn]);
 
-  const handleLogin = () => setLoggedIn(true);
+  const handleLogin = (who) => {
+    if (who) localStorage.setItem(USER_KEY, who);
+    setUsername(who || "");
+    setLoggedIn(true);
+  };
   const handleLogout = async () => {
     await phoneRef.current?.stop();
     clearToken();
+    localStorage.removeItem(USER_KEY);
     setLoggedIn(false);
     window.location.reload();
   };
@@ -102,6 +103,8 @@ export default function App() {
     if (!number || currentCall) return;
     startCall(number);
     try {
+      // Tag this call to the logged-in user before it hits the shared SIP line.
+      await api.claim(number).catch(() => {});
       await phoneRef.current.call(number);
     } catch (e) {
       setError(e.message);
@@ -109,26 +112,9 @@ export default function App() {
     }
   };
 
-  // Accept: switch to the in-call screen INSTANTLY (optimistic), then negotiate
-  // media in the background — so the green button feels responsive.
-  const handleAccept = () => {
-    acceptIncoming();
-    phoneRef.current?.answer();
-  };
-  // Decline: clear the ringing screen instantly, then reject the SIP session.
-  const handleDecline = () => {
-    clearIncoming();
-    phoneRef.current?.hangup();
-  };
-  // Hangup: fire the SIP BYE FIRST (so the carrier/mobile leg tears down with
-  // zero delay), THEN clear the UI. Order matters — clearing first triggers a
-  // React re-render that unmounts InCall on the same tick; doing the BYE first
-  // guarantees it's dispatched before any render churn. (UI still clears
-  // instantly since both run synchronously.)
-  const handleHangup = () => {
-    phoneRef.current?.hangup();
-    endCall();
-  };
+  const handleAccept = () => { acceptIncoming(); phoneRef.current?.answer(); };
+  const handleDecline = () => { clearIncoming(); phoneRef.current?.hangup(); };
+  const handleHangup = () => { phoneRef.current?.hangup(); endCall(); };
   const handleMute = () => {
     const muted = !currentCall?.muted;
     phoneRef.current?.setMuted(muted);
@@ -139,46 +125,59 @@ export default function App() {
 
   if (!loggedIn) return <Login onLogin={handleLogin} />;
 
+  const initials = (username || "?").slice(0, 2).toUpperCase();
+
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">📞 SoftPhone <span>· Vocallabs</span></div>
-        <div className="status">
-          <span className={`dot ${registered ? "on" : "off"}`} />
-          {registered ? "Registered" : "Connecting…"}
-          <button className="link" onClick={handleLogout}>Logout</button>
+        <div className="brand">
+          <BrandMark size={28} />
+          <span className="brand-name">SoftPhone</span>
+          <span className="brand-sub">Vocallabs</span>
+        </div>
+        <div className="topbar-right">
+          <span className="reg-pill">
+            <span className={`dot ${registered ? "on" : "off"}`} />
+            {registered ? "Registered" : "Connecting…"}
+          </span>
+          <span className="user-chip">
+            <span className="avatar-sm">{initials}</span>
+            {username}
+          </span>
+          <button className="icon-btn" onClick={handleLogout} title="Sign out">
+            <LogOutIcon size={17} />
+          </button>
         </div>
       </header>
 
       {error && <div className="banner error">{error}</div>}
 
       <main className="layout">
-        <section className="phone-col">
-          <div className="device">
-            <div className="notch" />
-            {incomingCall ? (
-              <IncomingCall
-                number={incomingCall.number}
-                onAccept={handleAccept}
-                onDecline={handleDecline}
-              />
-            ) : currentCall ? (
-              <InCall
-                call={currentCall}
-                onHangup={handleHangup}
-                onMute={handleMute}
-                onDtmf={handleDtmf}
-                onSpeaker={handleSpeaker}
-              />
-            ) : (
-              <Dialer onDial={handleDial} disabled={!registered} />
-            )}
-          </div>
+        <section className="panel phone-panel">
+          {currentCall ? (
+            <InCall
+              call={currentCall}
+              onHangup={handleHangup}
+              onMute={handleMute}
+              onDtmf={handleDtmf}
+              onSpeaker={handleSpeaker}
+            />
+          ) : (
+            <Dialer onDial={handleDial} disabled={!registered} />
+          )}
         </section>
-        <section className="history-col">
-          <CallHistory history={history} />
-        </section>
+
+        <CallHistory reloadKey={historyVersion} />
       </main>
+
+      {/* Heads-up popup — overlays the dashboard, never takes the whole screen */}
+      {incomingCall && (
+        <IncomingCall
+          number={incomingCall.number}
+          onAccept={handleAccept}
+          onDecline={handleDecline}
+        />
+      )}
     </div>
   );
 }

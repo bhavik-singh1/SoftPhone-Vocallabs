@@ -3,10 +3,8 @@ export const config = {
   port: parseInt(process.env.BACKEND_PORT || "3000", 10),
   jwtSecret: process.env.JWT_SECRET || "dev-secret",
 
-  login: {
-    user: process.env.APP_LOGIN_USER || "agent",
-    password: process.env.APP_LOGIN_PASSWORD || "agent123",
-  },
+  // App users are stored in the `users` table (see db.js seedUsers), seeded
+  // from SEED_USERS ("user:pass,..."; defaults to admin:admin123) on first boot.
 
   // SIP details handed to the browser so SIP.js can register over WSS.
   sip: {

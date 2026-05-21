@@ -12,15 +12,19 @@ const STATUS_RANK = {
 // UI state. The SipPhone instance itself lives in a ref in App (not in state).
 export const useStore = create((set) => ({
   registered: false,
+  username: null,
   // currentCall: { number, status, answeredAt, muted, direction } | null
   currentCall: null,
   // incomingCall: { number } while an inbound call is ringing (pre-answer)
   incomingCall: null,
-  history: [],
+  // Bumps each time a call ends so CallHistory refetches.
+  historyVersion: 0,
   error: null,
 
   setRegistered: (registered) => set({ registered }),
+  setUsername: (username) => set({ username }),
   setError: (error) => set({ error }),
+  bumpHistory: () => set((s) => ({ historyVersion: s.historyVersion + 1 })),
 
   startCall: (number) =>
     set({
@@ -60,6 +64,4 @@ export const useStore = create((set) => ({
       return { currentCall: next };
     }),
   endCall: () => set({ currentCall: null }),
-
-  setHistory: (history) => set({ history }),
 }));

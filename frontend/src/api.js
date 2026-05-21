@@ -24,7 +24,14 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   sipConfig: () => req("/api/sip-config"),
-  calls: () => req("/api/calls"),
+  calls: (page = 1, pageSize = 15) =>
+    req(`/api/calls?page=${page}&pageSize=${pageSize}`),
+  // Claim the next outbound call so the backend tags it to this user.
+  claim: (number) =>
+    req("/api/calls/claim", {
+      method: "POST",
+      body: JSON.stringify({ number }),
+    }),
   // Fetch a recording with auth and return an object URL for <audio>.
   async recordingUrl(uniqueid) {
     const res = await fetch(`/api/recordings/${uniqueid}`, {
