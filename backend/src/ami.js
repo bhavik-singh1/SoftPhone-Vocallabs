@@ -18,6 +18,7 @@ function isSoftphoneChannel(channel = "") {
 }
 
 async function persistAndPush(call) {
+  console.log(`[ami] call ${call.uniqueid} -> ${call.status}${call.number ? " (" + call.number + ")" : ""}`);
   try {
     await upsertCall(call);
   } catch (err) {
