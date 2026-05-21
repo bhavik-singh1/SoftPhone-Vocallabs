@@ -55,6 +55,11 @@ export class SipPhone {
         },
       },
       sessionDescriptionHandlerFactoryOptions: {
+        // Cap ICE gathering at 1.5s so we answer/connect as soon as the fast
+        // direct (STUN srflx, ~300ms) candidate is ready, instead of WAITING on
+        // the slow (US) TURN-relay allocation to finish. That wait was the 4-5s
+        // delay before the call actually connected to the caller.
+        iceGatheringTimeout: 1500,
         peerConnectionConfiguration: {
           // Prepend a fast public STUN so the browser gathers its reflexive
           // candidate quickly (the metered STUN was slow). With "all", a DIRECT
