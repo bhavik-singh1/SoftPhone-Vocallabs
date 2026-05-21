@@ -18,7 +18,8 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 KEY="${SOFTPHONE_SSH_KEY:-/c/Users/Public/.ssh/softphone1.pem}"
-TARGET="${SOFTPHONE_VPS:-ubuntu@13.127.11.207}"
+# Use the DuckDNS domain (not a hard IP) so an Elastic-IP change won't break this.
+TARGET="${SOFTPHONE_VPS:-ubuntu@vocallabs-bhavik.duckdns.org}"
 
 echo "Opening live SIP monitor (sngrep) on ${TARGET} ..."
 echo "  Up/Down = pick a call   Enter = see the call flow   Esc = back   q = quit"
