@@ -28,13 +28,10 @@ sipRouter.get("/sip-config", requireAuth, (req, res) => {
     authorizationUser: config.sip.user,
     password: config.sip.password,
     displayName: config.sip.user,
-    iceServers: [
-      { urls: `stun:${config.turn.publicIp}:3478` },
-      {
-        urls: `turn:${config.turn.publicIp}:3478?transport=udp`,
-        username,
-        credential,
-      },
-    ],
+    // STUN only. RTPEngine is publicly reachable (host network + public IP),
+    // so the browser connects directly via its server-reflexive candidate.
+    // A relay (TURN) on the same host can't be reached by RTPEngine on cloud
+    // NAT (hairpin), so we deliberately omit it.
+    iceServers: [{ urls: `stun:${config.turn.publicIp}:3478` }],
   });
 });

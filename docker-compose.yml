@@ -58,30 +58,32 @@ services:
   rtpengine:
     image: drachtio/rtpengine:latest
     restart: unless-stopped
-    # Two interfaces, both BOUND to the container's real IP (so Docker's
-    # published ports actually reach it), but advertising different addresses:
-    #   internal -> the container IP (Asterisk, on the docker network, reaches it)
-    #   external -> ${PUBLIC_IP} (the browser-reachable address, e.g. 127.0.0.1
-    #               locally via WSL port-forwarding, or the public IP on a VPS)
-    # Userspace forwarding (no kernel module needed at this scale).
+    # HOST networking: the docker bridge NAT mangles RTP/ICE so WebRTC media
+    # can't establish (it forces a broken TURN relay). On the host network the
+    # media UDP is not rewritten, preserving the source port ICE needs.
+    #   internal -> host primary IP (Asterisk reaches it via the host)
+    #   external -> ${PUBLIC_IP} advertised to the browser
+    network_mode: host
     command:
       - sh
       - -c
       - >
-        rtpengine
-        --interface=internal/$$(hostname -i)
-        --interface=external/$$(hostname -i)!${PUBLIC_IP}
+        IP=$$(hostname -I | awk '{print $$1}');
+        exec rtpengine
+        --interface=internal/$$IP
+        --interface=external/$$IP!${PUBLIC_IP}
         --listen-ng=0.0.0.0:22222
         --port-min=30000 --port-max=30050
         --log-level=6 --foreground --log-stderr
-    ports:
-      - "30000-30050:30000-30050/udp" # public media ports (browser ↔ rtpengine)
-    networks: [softphone-net]
 
   # ===== Kamailio: SIP-over-WSS edge, RTPEngine control, relay to Asterisk =====
   kamailio:
     build: ./infra/kamailio
     restart: unless-stopped
+    # RTPEngine runs on the host network now; reach its control socket via the
+    # docker host gateway (host.docker.internal -> host-gateway).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       PUBLIC_IP: ${PUBLIC_IP}
       ASTERISK_HOST: asterisk
