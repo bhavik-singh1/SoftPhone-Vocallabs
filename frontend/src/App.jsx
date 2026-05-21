@@ -43,7 +43,11 @@ export default function App() {
             if (state === SessionState.Established) {
               // Inbound just got answered → promote ring to the active call.
               if (st.incomingCall && !st.currentCall) acceptIncoming();
-              else updateCall({ status: "answered", answeredAt: Date.now() });
+              // Only set answered/timer if not already answered (the optimistic
+              // Accept may have set it already — don't restart the timer).
+              else if (st.currentCall && st.currentCall.status !== "answered") {
+                updateCall({ status: "answered", answeredAt: Date.now() });
+              }
             }
             if (state === SessionState.Terminated) {
               clearIncoming();
@@ -63,6 +67,12 @@ export default function App() {
             updateCall({ status: evt.status });
           }
           if (["ended", "no-answer", "failed"].includes(evt.status)) {
+            // Server truth: the call ended (often the REMOTE party hung up).
+            // Clear the UI instantly and tear down the local SIP session, rather
+            // than waiting for a SIP BYE to reach the browser (which can lag).
+            clearIncoming();
+            endCall();
+            phoneRef.current?.hangup();
             refreshHistory();
           }
         });
@@ -99,9 +109,23 @@ export default function App() {
     }
   };
 
-  const handleAccept = () => phoneRef.current?.answer();
-  const handleDecline = () => phoneRef.current?.hangup();
-  const handleHangup = () => phoneRef.current?.hangup();
+  // Accept: switch to the in-call screen INSTANTLY (optimistic), then negotiate
+  // media in the background — so the green button feels responsive.
+  const handleAccept = () => {
+    acceptIncoming();
+    phoneRef.current?.answer();
+  };
+  // Decline: clear the ringing screen instantly, then reject the SIP session.
+  const handleDecline = () => {
+    clearIncoming();
+    phoneRef.current?.hangup();
+  };
+  // Hangup: clear the call from the UI INSTANTLY, then send the SIP BYE in the
+  // background — so the red button doesn't wait on the BYE round-trip.
+  const handleHangup = () => {
+    endCall();
+    phoneRef.current?.hangup();
+  };
   const handleMute = () => {
     const muted = !currentCall?.muted;
     phoneRef.current?.setMuted(muted);
