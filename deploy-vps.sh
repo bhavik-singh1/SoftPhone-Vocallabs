@@ -47,10 +47,17 @@ cp "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" infra/kamailio/certs/cert.pem
 cp "/etc/letsencrypt/live/${DOMAIN}/privkey.pem"  infra/kamailio/certs/key.pem
 echo "    cert installed for ${DOMAIN}"
 
-echo "==> 3/5  .env (PUBLIC_IP + PUBLIC_HOST)"
+echo "==> 3/5  .env (PUBLIC_IP + PUBLIC_HOST + PRIVATE_IP)"
+PRIVIP="$(ip route get 1.1.1.1 | grep -oP 'src \K[0-9.]+' | head -1)"
 sed -i "s/^PUBLIC_IP=.*/PUBLIC_IP=${PUBIP}/" .env
 sed -i "s/^PUBLIC_HOST=.*/PUBLIC_HOST=${DOMAIN}/" .env
-grep -E '^PUBLIC_(IP|HOST)=' .env
+# PRIVATE_IP: add or replace
+if grep -q '^PRIVATE_IP=' .env; then
+  sed -i "s/^PRIVATE_IP=.*/PRIVATE_IP=${PRIVIP}/" .env
+else
+  echo "PRIVATE_IP=${PRIVIP}" >> .env
+fi
+grep -E '^(PUBLIC_IP|PUBLIC_HOST|PRIVATE_IP)=' .env
 
 echo "==> 4/5  Firewall + NAT hairpin"
 # The cloud Security Group is the real firewall; ufw here only got in the way

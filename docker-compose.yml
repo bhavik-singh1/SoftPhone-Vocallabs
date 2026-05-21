@@ -107,17 +107,16 @@ services:
     image: coturn/coturn:latest
     restart: unless-stopped
     network_mode: host
-    command:
-      - sh
-      - -c
-      - >
-        set -- $$(hostname -I); IP=$$1;
-        exec turnserver -n --log-file=stdout --no-tls --no-dtls --fingerprint
-        --listening-port=3478 --min-port=49160 --max-port=49200
-        --use-auth-secret --static-auth-secret=${TURN_SECRET}
-        --realm=${TURN_REALM}
-        --listening-ip=$$IP --relay-ip=$$IP
-        --external-ip=${PUBLIC_IP}/$$IP
+    # Flags are args to the image's turnserver entrypoint (no shell wrapper).
+    # PRIVATE_IP is the host's private IP (set by deploy-vps.sh); external-ip
+    # advertises the public IP but binds/relays on the private IP.
+    command: >
+      -n --log-file=stdout --no-tls --no-dtls --fingerprint
+      --listening-port=3478 --min-port=49160 --max-port=49200
+      --use-auth-secret --static-auth-secret=${TURN_SECRET}
+      --realm=${TURN_REALM}
+      --listening-ip=${PRIVATE_IP} --relay-ip=${PRIVATE_IP}
+      --external-ip=${PUBLIC_IP}/${PRIVATE_IP}
 
   # ===== Backend: auth, AMI live-event bridge, WS push, CDR/recordings API =====
   backend:
