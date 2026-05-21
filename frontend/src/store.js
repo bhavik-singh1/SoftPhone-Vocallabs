@@ -19,10 +19,13 @@ export const useStore = create((set) => ({
   incomingCall: null,
   // Bumps each time a call ends so CallHistory refetches.
   historyVersion: 0,
+  // { inbound, outbound } PSTN numbers shown on the dashboard.
+  numbers: { inbound: "", outbound: "" },
   error: null,
 
   setRegistered: (registered) => set({ registered }),
   setUsername: (username) => set({ username }),
+  setNumbers: (numbers) => set({ numbers: numbers || { inbound: "", outbound: "" } }),
   setError: (error) => set({ error }),
   bumpHistory: () => set((s) => ({ historyVersion: s.historyVersion + 1 })),
 

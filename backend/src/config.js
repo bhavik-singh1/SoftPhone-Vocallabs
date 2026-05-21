@@ -14,6 +14,14 @@ export const config = {
     password: process.env.SOFTPHONE_PASSWORD || "",
   },
 
+  // The two PSTN numbers shown on the dashboard so agents know which number to
+  // give out for INBOUND (people call this DID to reach them) and which number
+  // their OUTBOUND calls present as the caller ID.
+  numbers: {
+    inbound: process.env.INBOUND_DID || "",
+    outbound: process.env.TRUNK_CALLER_ID || "",
+  },
+
   // ICE servers for the browser (coturn). On a single LAN this is optional.
   turn: {
     publicIp: process.env.PUBLIC_IP || "127.0.0.1",

@@ -8,7 +8,9 @@ import Dialer from "./components/Dialer.jsx";
 import InCall from "./components/InCall.jsx";
 import IncomingCall from "./components/IncomingCall.jsx";
 import CallHistory from "./components/CallHistory.jsx";
-import { BrandMark, LogOutIcon } from "./components/icons.jsx";
+import {
+  BrandMark, LogOutIcon, PhoneIncomingIcon, PhoneOutgoingIcon,
+} from "./components/icons.jsx";
 
 const USER_KEY = "sp_user";
 
@@ -18,9 +20,9 @@ export default function App() {
   const wsRef = useRef(null);
 
   const {
-    registered, currentCall, incomingCall, username, historyVersion, error,
+    registered, currentCall, incomingCall, username, historyVersion, numbers, error,
     setRegistered, setUsername, setError, startCall, updateCall, endCall,
-    setIncoming, clearIncoming, acceptIncoming, bumpHistory,
+    setIncoming, clearIncoming, acceptIncoming, bumpHistory, setNumbers,
   } = useStore();
 
   // Restore the display name across reloads.
@@ -36,6 +38,7 @@ export default function App() {
     (async () => {
       try {
         const sipConfig = await api.sipConfig();
+        setNumbers(sipConfig.numbers);
         const phone = new SipPhone(sipConfig, {
           onRegistered: () => setRegistered(true),
           onUnregistered: () => setRegistered(false),
@@ -133,7 +136,6 @@ export default function App() {
         <div className="brand">
           <BrandMark size={30} />
           <span className="logo-text">Soft<span className="pad">Pad</span></span>
-          <span className="brand-sub">Vocallabs</span>
         </div>
         <div className="topbar-right">
           <span className="reg-pill">
@@ -154,6 +156,24 @@ export default function App() {
 
       <main className="layout">
         <section className="panel phone-panel">
+          {(numbers.inbound || numbers.outbound) && (
+            <div className="line-numbers">
+              <div className="line-num">
+                <span className="ln-ico in"><PhoneIncomingIcon size={15} /></span>
+                <div className="ln-meta">
+                  <span className="ln-label">Inbound number</span>
+                  <span className="ln-value">{numbers.inbound || "—"}</span>
+                </div>
+              </div>
+              <div className="line-num">
+                <span className="ln-ico out"><PhoneOutgoingIcon size={15} /></span>
+                <div className="ln-meta">
+                  <span className="ln-label">Calls show as</span>
+                  <span className="ln-value">{numbers.outbound || "—"}</span>
+                </div>
+              </div>
+            </div>
+          )}
           {currentCall ? (
             <InCall
               call={currentCall}

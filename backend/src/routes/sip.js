@@ -28,6 +28,8 @@ sipRouter.get("/sip-config", requireAuth, (req, res) => {
     password: config.sip.password,
     displayName: config.sip.user,
     iceServers: buildIceServers(),
+    // Display-only: the agent's inbound DID and outbound caller-ID numbers.
+    numbers: config.numbers,
   });
 });
 
