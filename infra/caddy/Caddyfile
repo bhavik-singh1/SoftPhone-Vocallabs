@@ -27,9 +27,14 @@
 	encode zstd gzip
 
 	# SIP-over-WebSocket -> Kamailio's internal plain-WS listener.
+	# flush_interval -1 streams frames immediately (no buffering) so PING/PONG
+	# keepalives and SIP messages pass through promptly and the long-lived socket
+	# isn't held/closed by the proxy during quiet periods of a call.
 	@sip path /ws-sip /ws-sip/*
 	handle @sip {
-		reverse_proxy kamailio:8080
+		reverse_proxy kamailio:8080 {
+			flush_interval -1
+		}
 	}
 
 	# Everything else -> the Vite frontend (which proxies /api and /ws to the
