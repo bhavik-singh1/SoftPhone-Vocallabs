@@ -156,8 +156,14 @@ export class SipPhone {
   // dispatch the right teardown for the EXACT state, retrying once a tick later
   // for the in-flight-accept case so the BYE goes out as soon as it's legal.
   hangup() {
-    if (!this.session) return;
+    if (!this.session) {
+      console.warn("[SIP] hangup(): no active session");
+      return;
+    }
     const s = this.session;
+    console.warn(
+      `[SIP] hangup(): state=${s.state} isInvitation=${s instanceof Invitation}`
+    );
     // Detach our reference up front so a late state-change can't re-enter here.
     this.session = null;
     if (this.remoteAudio) this.remoteAudio.srcObject = null;
@@ -177,15 +183,22 @@ export class SipPhone {
         // for the ACK, then BYE. This is the path that caused the long delay.
         if (s instanceof Invitation) {
           if (!retried) setTimeout(() => this._endSession(s, true), 0);
-          else s.bye?.().catch(() => {});
+          else s.bye?.().then(
+            () => console.warn("[SIP] BYE sent (was Establishing)"),
+            (e) => console.error("[SIP] BYE failed (Establishing):", e)
+          );
         } else {
           s.cancel?.().catch(() => {});
         }
         break;
       case SessionState.Established:
-        s.bye?.().catch(() => {});
+        s.bye?.().then(
+          () => console.warn("[SIP] BYE sent (Established)"),
+          (e) => console.error("[SIP] BYE failed (Established):", e)
+        );
         break;
       default:
+        console.warn(`[SIP] hangup(): no teardown for state=${s.state}`);
         break;
     }
   }
