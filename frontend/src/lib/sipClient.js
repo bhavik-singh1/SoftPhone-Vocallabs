@@ -56,11 +56,18 @@ export class SipPhone {
       },
       sessionDescriptionHandlerFactoryOptions: {
         peerConnectionConfiguration: {
-          iceServers: this.cfg.iceServers,
-          // Force ALL media through the TURN relay. On CGNAT/symmetric NAT,
-          // direct (host/srflx) candidate pairs can be one-way; relay-only
-          // guarantees every call uses the consistent, working relay path.
-          iceTransportPolicy: "relay",
+          // Prepend a fast public STUN so the browser gathers its reflexive
+          // candidate quickly (the metered STUN was slow). With "all", a DIRECT
+          // srflx<->srflx pair connects in well under a second; the (distant)
+          // TURN relay is only a fallback. Relay-only was forcing EVERY call
+          // through that relay → the 4-5s delay before audio. ICE's
+          // bidirectional checks won't nominate a one-way pair, so this is both
+          // faster and safe (the old one-way issue was carrier-side, not here).
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            ...(this.cfg.iceServers || []),
+          ],
+          iceTransportPolicy: "all",
         },
       },
     });
