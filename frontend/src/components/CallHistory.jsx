@@ -1,9 +1,12 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { api } from "../api.js";
 import {
-  PhoneIncomingIcon, PhoneOutgoingIcon, PhoneMissedIcon,
+  PhoneIncomingIcon, PhoneOutgoingIcon, PhoneMissedIcon, PhoneIcon,
   PlayIcon, ClockIcon, ChevronLeftIcon, ChevronRightIcon,
 } from "./icons.jsx";
+
+// Numbers we can't dial back (inbound with no caller-id, internal extens).
+const isDialable = (n) => !!n && /^\+?[0-9]{3,}$/.test(n.replace(/\s/g, ""));
 
 const PAGE_SIZE = 15;
 
@@ -25,7 +28,8 @@ function fmtTime(ts) {
 }
 
 // `reloadKey` bumps when a call ends so we refetch the current page.
-export default function CallHistory({ reloadKey }) {
+// `onCall` redials a number from a history row.
+export default function CallHistory({ reloadKey, onCall }) {
   const [page, setPage] = useState(1);
   const [data, setData] = useState({ items: [], total: 0 });
   const [audioUrl, setAudioUrl] = useState(null);
@@ -81,7 +85,13 @@ export default function CallHistory({ reloadKey }) {
         <>
           <div className="history-list">
             {items.map((c) => (
-              <CallRow key={c.id} call={c} playing={playingId === c.uniqueid} onPlay={play} />
+              <CallRow
+                key={c.id}
+                call={c}
+                playing={playingId === c.uniqueid}
+                onPlay={play}
+                onCall={onCall}
+              />
             ))}
           </div>
 
@@ -118,12 +128,14 @@ export default function CallHistory({ reloadKey }) {
   );
 }
 
-function CallRow({ call: c, playing, onPlay }) {
+function CallRow({ call: c, playing, onPlay, onCall }) {
   const missed = c.status === "no-answer" || c.status === "failed";
   const inbound = c.direction === "inbound";
   const dirClass = missed ? "missed" : inbound ? "inbound" : "outbound";
   const Icon = missed ? PhoneMissedIcon : inbound ? PhoneIncomingIcon : PhoneOutgoingIcon;
   const dur = fmtDuration(c.duration);
+  const dialable = isDialable(c.number);
+  const hasRec = c.recording && c.status === "ended";
 
   return (
     <div className="call-row">
@@ -137,15 +149,26 @@ function CallRow({ call: c, playing, onPlay }) {
           {c.status === "failed" && <span className="tag missed">Failed</span>}
         </div>
       </div>
-      {c.recording && c.status === "ended" && (
-        <button
-          className={`play-btn ${playing ? "active" : ""}`}
-          onClick={() => onPlay(c.uniqueid)}
-          title="Play recording"
-        >
-          <PlayIcon size={13} /> {playing ? "Playing" : "Recording"}
-        </button>
-      )}
+      <div className="row-actions">
+        {hasRec && (
+          <button
+            className={`row-icon ${playing ? "active" : ""}`}
+            onClick={() => onPlay(c.uniqueid)}
+            title={playing ? "Playing recording" : "Play recording"}
+          >
+            <PlayIcon size={15} />
+          </button>
+        )}
+        {dialable && (
+          <button
+            className="row-icon call"
+            onClick={() => onCall?.(c.number)}
+            title={`Call ${c.number}`}
+          >
+            <PhoneIcon size={15} />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

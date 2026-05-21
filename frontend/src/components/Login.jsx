@@ -27,8 +27,8 @@ export default function Login({ onLogin }) {
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit}>
         <div className="login-brand">
-          <BrandMark size={34} />
-          <span className="t">SoftPhone</span>
+          <BrandMark size={38} />
+          <span className="logo-text">Soft<span className="pad">Pad</span></span>
         </div>
         <p className="login-sub">Sign in to your calling dashboard.</p>
 
@@ -67,10 +67,6 @@ export default function Login({ onLogin }) {
         <button className="btn-primary" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
-
-        <div className="login-hint">
-          Demo: <code>admin</code> / <code>admin123</code>
-        </div>
       </form>
     </div>
   );

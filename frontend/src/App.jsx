@@ -131,8 +131,8 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <BrandMark size={28} />
-          <span className="brand-name">SoftPhone</span>
+          <BrandMark size={30} />
+          <span className="logo-text">Soft<span className="pad">Pad</span></span>
           <span className="brand-sub">Vocallabs</span>
         </div>
         <div className="topbar-right">
@@ -167,7 +167,7 @@ export default function App() {
           )}
         </section>
 
-        <CallHistory reloadKey={historyVersion} />
+        <CallHistory reloadKey={historyVersion} onCall={handleDial} />
       </main>
 
       {/* Heads-up popup — overlays the dashboard, never takes the whole screen */}

@@ -156,19 +156,34 @@ export const ClockIcon = (p) => (
   </Svg>
 );
 
-// The product mark — a rounded-square "call wave" glyph, used in topbar/login.
+// SoftPad product mark — a rounded "pad" tile holding a 2x2 keypad of dots with
+// a sound-wave sweep through it: a dial pad (the "Pad") that speaks. Used in the
+// topbar and login. Self-contained gradient + unique ids so it can repeat.
 export const BrandMark = ({ size = 28, ...rest }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" fill="none" {...rest}>
-    <rect width="32" height="32" rx="9" fill="url(#bm)" />
-    <path
-      d="M11 11.5c0 5.25 4.25 9.5 9.5 9.5.3 0 .5-.2.5-.5v-2.1c0-.27-.2-.49-.46-.5a7.1 7.1 0 0 1-1.86-.36.5.5 0 0 0-.51.12l-1.02 1.02a11.2 11.2 0 0 1-3.49-3.49l1.02-1.02a.5.5 0 0 0 .12-.51 7.1 7.1 0 0 1-.36-1.86.5.5 0 0 0-.5-.46H11.5c-.3 0-.5.2-.5.5z"
-      fill="#fff"
-    />
     <defs>
-      <linearGradient id="bm" x1="0" y1="0" x2="32" y2="32">
-        <stop stopColor="#6366f1" />
+      <linearGradient id="sp-bg" x1="2" y1="2" x2="30" y2="30">
+        <stop stopColor="#7c83ff" />
         <stop offset="1" stopColor="#22d3ee" />
       </linearGradient>
     </defs>
+    <rect x="2" y="2" width="28" height="28" rx="9" fill="url(#sp-bg)" />
+    {/* keypad dots */}
+    <g fill="#fff" fillOpacity="0.95">
+      <circle cx="12" cy="12" r="1.7" />
+      <circle cx="20" cy="12" r="1.7" />
+      <circle cx="12" cy="20" r="1.7" />
+      <circle cx="20" cy="20" r="1.7" />
+    </g>
+    {/* sound-wave sweep */}
+    <path
+      d="M7 16c1.6 0 1.6-4 3.2-4s1.6 8 3.2 8 1.6-6 3.2-6 1.6 4 3.2 4 1.6-2 3-2"
+      stroke="#fff"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+      opacity="0.55"
+    />
   </svg>
 );

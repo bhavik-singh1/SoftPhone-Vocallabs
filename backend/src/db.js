@@ -76,7 +76,9 @@ export async function initDb() {
 // Seed the default accounts the first time only. Comma-separated pairs in
 // SEED_USERS ("user:pass,user2:pass2"); defaults to admin/admin123.
 async function seedUsers() {
-  const spec = process.env.SEED_USERS || "admin:admin123";
+  const spec =
+    process.env.SEED_USERS ||
+    "admin:admin123,joeydash:joeydash@1234,vaibhav:vaibhav@1234";
   for (const pair of spec.split(",")) {
     const [username, password] = pair.split(":");
     if (!username || !password) continue;
