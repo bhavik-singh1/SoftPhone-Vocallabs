@@ -3,17 +3,23 @@
 This guide moves the app from `vocallabs-bhavik.duckdns.org` to your own domain
 **`softpad.tech`**, with DNS managed in **Cloudflare**.
 
+A built-in **Caddy** reverse proxy serves the whole app at a clean
+**`https://softpad.tech`** (no `:5173` / `:8443` in the URL). Caddy gets its own
+Let's Encrypt cert automatically; you only run certbot for Kamailio's direct
+`:8443` fallback path.
+
 You will:
 
 1. Point `softpad.tech` at the VPS in Cloudflare (**DNS only** — proxy OFF).
-2. Re-issue the TLS cert for `softpad.tech` with Let's Encrypt.
-3. Update `.env` and restart the stack.
-4. Verify register + a test call.
+2. Re-issue the Kamailio TLS cert for `softpad.tech` with Let's Encrypt.
+3. Update `.env` and restart the stack (Caddy auto-issues the `:443` cert).
+4. Verify register + a test call at `https://softpad.tech`.
 
 > **Why proxy must be OFF (grey cloud):** Cloudflare's proxy (orange cloud) only
-> carries standard HTTP/HTTPS. SoftPad serves the dashboard on **:5173**, SIP
-> signalling over **WSS :8443**, and real-time **RTP/UDP media** — none of which
-> the Cloudflare proxy can pass. So every record below is **DNS only**.
+> carries standard HTTP/HTTPS — it cannot pass SoftPad's real-time **RTP/UDP
+> media** (or the SIP WebSocket reliably). Our own Caddy already provides clean
+> TLS on `:443`, so Cloudflare just needs to resolve the name to the VPS. Every
+> record below is **DNS only**.
 
 ---
 
@@ -72,17 +78,19 @@ The OS firewall (ufw) is left disabled; the **cloud Security Group is the real
 firewall**. In AWS EC2 → the instance's Security Group → **Inbound rules**,
 make sure these are open to `0.0.0.0/0`:
 
-| Port / range          | Proto | Purpose                                    |
-|-----------------------|-------|--------------------------------------------|
-| `80`                  | TCP   | Let's Encrypt HTTP-01 challenge (cert)     |
-| `5173`                | TCP   | Dashboard (Vite)                           |
-| `8443`                | TCP   | SIP over WSS (browser signalling)          |
-| `3478`                | TCP+UDP | coturn STUN/TURN                         |
-| `10000-10050`         | UDP   | Asterisk RTP media                         |
-| `49160-49200`         | UDP   | coturn relay range                         |
+| Port / range          | Proto | Purpose                                       |
+|-----------------------|-------|-----------------------------------------------|
+| `443`                 | TCP   | Clean `https://softpad.tech` (Caddy) + its cert |
+| `80`                  | TCP   | certbot HTTP-01 challenge (Kamailio :8443 cert) |
+| `5173`                | TCP   | Dashboard direct (transition fallback)        |
+| `8443`                | TCP   | SIP over WSS direct (transition fallback)     |
+| `3478`                | TCP+UDP | coturn STUN/TURN                            |
+| `10000-10050`         | UDP   | Asterisk RTP media                            |
+| `49160-49200`         | UDP   | coturn relay range                            |
 
-(80 only needs to be open during cert issuance/renewal, but leaving it open is
-fine — nothing else listens on it.)
+(`80` only needs to be open during cert issuance/renewal; leaving it open is
+fine. `5173`/`8443` are the pre-Caddy direct ports — keep them open during the
+switch, close them later once `:443` is confirmed working.)
 
 ---
 
@@ -136,8 +144,9 @@ serves WSS using the cert in `infra/kamailio/certs/`.
    ```
    Subject should be `CN = softpad.tech` and not expired.
 
-2. **Open the app:** <https://softpad.tech:5173> — log in (`admin` / `admin123`).
-   The status pill should go to **Registered** within a few seconds.
+2. **Open the app:** <https://softpad.tech> — log in (`admin` / `admin123`).
+   The status pill should go to **Registered** within a few seconds. (The direct
+   `https://softpad.tech:5173` also still works as a fallback.)
 
 3. **Trunk still registered:**
    ```bash
@@ -183,10 +192,13 @@ Test it: `sudo certbot renew --dry-run`.
 
 ## Notes
 
-- **Non-standard ports stay in the URL.** Because the app isn't behind a reverse
-  proxy on 443, the dashboard URL is `https://softpad.tech:5173` and SIP is on
-  `:8443`. If you later want a clean `https://softpad.tech` (no `:5173`), that's
-  a separate change: add an Nginx/Caddy reverse proxy on 443 in front of the
-  frontend and WSS. Not required for the app to work.
+- **Clean URL via Caddy.** The bundled Caddy service serves everything at
+  `https://softpad.tech` (`:443`): the dashboard, `/api`, `/ws`, and the SIP
+  WebSocket at `/ws-sip` (proxied to Kamailio's internal plain-WS). The backend
+  hands the browser `wss://softpad.tech/ws-sip` by default. The pre-Caddy direct
+  ports `:5173` (dashboard) and `:8443` (WSS) remain open as a fallback — to use
+  the direct WSS path instead, set `WS_SERVER=wss://softpad.tech:8443` in `.env`.
+  Once `:443` is confirmed working you can close `5173`/`8443` in the Security
+  Group.
 - **Keep `.env` private.** `PUBLIC_HOST=softpad.tech` is fine to commit in
   `.env.example`, but the real `.env` (with trunk passwords) stays gitignored.
