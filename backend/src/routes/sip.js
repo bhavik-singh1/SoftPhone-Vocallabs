@@ -28,10 +28,17 @@ sipRouter.get("/sip-config", requireAuth, (req, res) => {
     authorizationUser: config.sip.user,
     password: config.sip.password,
     displayName: config.sip.user,
-    // STUN only. RTPEngine is publicly reachable (host network + public IP),
-    // so the browser connects directly via its server-reflexive candidate.
-    // A relay (TURN) on the same host can't be reached by RTPEngine on cloud
-    // NAT (hairpin), so we deliberately omit it.
-    iceServers: [{ urls: `stun:${config.turn.publicIp}:3478` }],
+    // STUN + TURN. Restrictive networks (mobile/CGNAT) block UDP to high media
+    // ports, so the browser must relay everything through TURN on :3478 (which
+    // such networks allow). The EC2 NAT-hairpin route (see deploy-vps.sh) lets
+    // RTPEngine reach coturn's relay back on the same host.
+    iceServers: [
+      { urls: `stun:${config.turn.publicIp}:3478` },
+      {
+        urls: `turn:${config.turn.publicIp}:3478?transport=udp`,
+        username,
+        credential,
+      },
+    ],
   });
 });

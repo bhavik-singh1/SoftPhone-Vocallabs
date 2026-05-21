@@ -99,21 +99,25 @@ services:
     depends_on: [asterisk, rtpengine]
 
   # ===== coturn: STUN/TURN for browser NAT traversal =====
-  # Configured via CLI flags so .env values interpolate. Mainly needed on a
-  # VPS / across NAT; on a single LAN, host ICE candidates usually suffice.
+  # HOST networking + external-ip=PUBLIC/PRIVATE so the relay address it hands
+  # out is the public IP but it binds the host's private IP. Combined with the
+  # EC2 hairpin route (deploy-vps.sh), RTPEngine on the same host can reach the
+  # relay. Restrictive mobile/CGNAT clients relay all media through :3478 here.
   coturn:
     image: coturn/coturn:latest
     restart: unless-stopped
-    command: >
-      -n --log-file=stdout --no-tls --no-dtls --fingerprint
-      --listening-port=3478 --min-port=49160 --max-port=49200
-      --use-auth-secret --static-auth-secret=${TURN_SECRET}
-      --realm=${TURN_REALM} --external-ip=${PUBLIC_IP}
-    ports:
-      - "3478:3478"
-      - "3478:3478/udp"
-      - "49160-49200:49160-49200/udp" # TURN relay range
-    networks: [softphone-net]
+    network_mode: host
+    command:
+      - sh
+      - -c
+      - >
+        set -- $$(hostname -I); IP=$$1;
+        exec turnserver -n --log-file=stdout --no-tls --no-dtls --fingerprint
+        --listening-port=3478 --min-port=49160 --max-port=49200
+        --use-auth-secret --static-auth-secret=${TURN_SECRET}
+        --realm=${TURN_REALM}
+        --listening-ip=$$IP --relay-ip=$$IP
+        --external-ip=${PUBLIC_IP}/$$IP
 
   # ===== Backend: auth, AMI live-event bridge, WS push, CDR/recordings API =====
   backend:

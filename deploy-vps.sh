@@ -52,16 +52,17 @@ sed -i "s/^PUBLIC_IP=.*/PUBLIC_IP=${PUBIP}/" .env
 sed -i "s/^PUBLIC_HOST=.*/PUBLIC_HOST=${DOMAIN}/" .env
 grep -E '^PUBLIC_(IP|HOST)=' .env
 
-echo "==> 4/5  OS firewall (also open these in your cloud security group!)"
-ufw allow 22/tcp        # SSH — keep this or you'll lock yourself out
-ufw allow 80/tcp        # certbot renewals
-ufw allow 5173/tcp      # web app (HTTPS)
-ufw allow 8443/tcp      # Kamailio WSS
-ufw allow 30000:30050/udp   # RTPEngine media
-ufw allow 10000:10050/udp   # Asterisk RTP
-ufw allow 3478           # coturn STUN/TURN
-ufw allow 49160:49200/udp   # coturn relay
-ufw --force enable
+echo "==> 4/5  Firewall + NAT hairpin"
+# The cloud Security Group is the real firewall; ufw here only got in the way
+# (it blocked the internal RTPEngine control port), so make sure it's off.
+ufw --force disable 2>/dev/null || true
+# EC2 hairpin: the instance can't reach its own public IP by default. coturn
+# advertises the relay on the public IP, but RTPEngine (same host) must reach
+# it — so redirect traffic destined to our public IP back to the private IP.
+PRIVIP="$(ip route get 1.1.1.1 | grep -oP 'src \K[0-9.]+' | head -1)"
+iptables -t nat -C OUTPUT -d "${PUBIP}" -j DNAT --to-destination "${PRIVIP}" 2>/dev/null \
+  || iptables -t nat -A OUTPUT -d "${PUBIP}" -j DNAT --to-destination "${PRIVIP}"
+echo "    hairpin: ${PUBIP} -> ${PRIVIP}"
 
 echo "==> 5/5  Build & start"
 docker compose up -d --build
