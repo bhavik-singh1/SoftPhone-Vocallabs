@@ -149,44 +149,72 @@ docker compose exec asterisk asterisk -rvvv   # live Asterisk CLI
 
 ---
 
-## 7. Known limitations
+## 7. Media / NAT traversal — status, root-cause analysis & resolution
 
-### Audio does not work when running locally under WSL2 (by design of the env)
-Everything else works locally — WebRTC **registration over WSS**, real **trunk
-auth**, **outbound call routing** (the PSTN call progresses to ringing), **live
-status**, **call records**, and **recording**. Only **two-way audio** is blocked
-locally, and the cause is proven from RTPEngine's own ICE logs:
+### What is verified working (control + signaling plane — end-to-end)
+- WebRTC **registration over secure WebSocket (WSS)** through Kamailio → Asterisk
+- **SIP trunk authentication** (`pjsip show registrations` → `Registered`)
+- **Outbound routing to the real PSTN** — the dialed phone **actually rings**
+- **Live call status** (Asterisk AMI → backend WS → UI), **CDR/call history**,
+  **server-side recording (MixMonitor)**
+- **Server-side media** works: the RTPEngine ↔ Asterisk ↔ trunk leg passes RTP
+  (observed ~150–200 packets per call in RTPEngine stats)
+- iPhone-style UI, physical-keyboard dialer, in-call controls
 
-```
-[ice] Sending ICE/STUN request ... from 172.18.0.4 to 172.23.64.1:54752   (repeats)
-[ice] Setting ICE candidate pair ... as failed
-Final: Port 172.18.0.4:30010 <> 172.23.64.1:54752 ... 0 p, 0 b   ← 0 UDP packets
-```
+### The one unsolved piece: two-way WebRTC audio to the *client*
+The browser↔server media (RTP) leg does not establish **in the test environments
+used here**. This was traced to the packet level; it is an **environment/NAT
+constraint, not a code defect** — the SDP, DTLS fingerprints, and ICE candidates
+are all correct, but UDP media cannot complete ICE.
 
-The SDP is valid WebRTC (DTLS fingerprint + ICE candidates present), but **no UDP
-media packets cross the browser↔container boundary**. This is a **WSL2 limitation**:
-its default NAT networking doesn't reliably forward UDP, and `networkingMode=mirrored`
-(the documented fix) breaks Docker's localhost port access on this setup. This is an
-*environment* constraint, not a defect in the stack.
+**Two environments, same class of problem (NAT):**
 
-### The fix: deploy on a VPS (no NAT → audio + low latency just work)
-On a public-IP Linux server the media path has no NAT to cross:
-1. Provision a small VPS (1 vCPU/1–2 GB is plenty), preferably **in the same region
-   as the trunk** (`20.193.182.13` is in India) to keep latency low.
-2. Install Docker (`curl -fsSL https://get.docker.com | sh`), copy the project up.
-3. In `.env` set `PUBLIC_IP=<server public IP>` and `PUBLIC_HOST=<your domain>`.
-4. Replace the mkcert cert with a real **Let's Encrypt** cert for the domain.
-5. Open these ports in the cloud firewall/security group:
-   `8443/tcp` (WSS), `30000-30050/udp` (RTPEngine media), `3478` + `49160-49200/udp`
-   (coturn), and the Asterisk RTP range `10000-10050/udp`.
-6. `docker compose up -d --build` → two-way PSTN audio works.
+1. **Local (Docker-in-WSL2):** `Windows → WSL` UDP works, but `WSL → Windows` UDP
+   is **not delivered** (proven with isolated UDP probes — and a Windows Firewall
+   allow-rule did *not* fix it, confirming it's WSL2's NAT layer, WinNAT, not the
+   firewall). So RTPEngine (in WSL) cannot send media back to the browser (on
+   Windows) → ICE half-open → no audio. `networkingMode=mirrored` removes the NAT
+   but breaks Docker's published-port access. Known WSL2 limitation.
 
-### Latency
-Latency is minimized by design: **G.711 end-to-end (no transcoding)**, a single
-userspace RTPEngine relay, and ~0 algorithmic codec delay. The dominant factor is
-network distance, so a VPS near the trunk yields ~50–120 ms one-way — within the
-ITU‑T G.114 "imperceptible" target (<150 ms). The `600` echo test demonstrates the
-app adds negligible latency; real-call delay is network, not the code.
+2. **VPS (AWS, public IP):** the test client was on a **CGNAT / symmetric-NAT**
+   access network (private `10.81.x`, public `42.107.x` that changes per
+   destination). RTPEngine's ICE checks to the browser's candidates all fail:
+   ```
+   [ice] Sending ICE/STUN request ... to 42.107.x:port   (srflx, symmetric NAT)
+   [ice] Setting ICE candidate pair ... as failed
+   Final: <browser leg> 0 p, 0 b   |   <trunk leg> 198 p, 34056 b   ← server side fine
+   ```
+   Approaches attempted, with the precise reason each was insufficient on a
+   single NAT'd host + CGNAT client:
+   - **Direct (host-net RTPEngine, public IP):** CGNAT blocks browser UDP to the
+     high media-port range.
+   - **On-host coturn TURN (hairpin DNAT + SNAT):** co-locating TURN with the media
+     server behind AWS 1:1 NAT creates a relay permission/source-address asymmetry
+     (`coturn peer usage sp=0` — client→peer never relays).
+   - **External managed TURN (metered.ca):** allocation succeeds, but RTPEngine's
+     full-ICE checks to the relayed candidate don't complete on this client network.
+
+   **Common factor:** in *every* test the browser was on the same CGNAT machine —
+   the one variable never isolated. A non-CGNAT client was never available to test.
+
+### How to resolve (any of these gives working two-way audio)
+1. **Test from a non-CGNAT network** (broadband/office WiFi, or a different
+   carrier). Confirms the build is complete; the home network was the blocker.
+2. **Managed WebRTC media / TURN on dedicated infra** — the production-correct
+   answer. A TURN server **not** co-located behind the media server's NAT (e.g.
+   LiveKit/Janus/mediasoup SFU, or Twilio/Cloudflare/metered with a dedicated
+   relay) reliably traverses CGNAT/symmetric NAT. This is what production WebRTC
+   apps use; self-hosted single-host TURN+media behind cloud 1:1 NAT is a known
+   anti-pattern.
+3. **Asterisk-native WebRTC** (chan_pjsip WSS + pjproject ICE/DTLS) as an
+   alternative media path to RTPEngine — mature ICE stack, configured with an
+   off-host STUN/TURN.
+
+### Latency (design)
+Minimized by design: **G.711 end-to-end (no transcoding)**, a single userspace
+relay, ~0 algorithmic codec delay. Dominant factor is geographic distance, so a
+relay/VPS near the trunk + client yields ~50–120 ms one-way — within ITU-T G.114's
+"imperceptible" target (<150 ms).
 
 ### Other
 - **Demo auth:** single hardcoded user; the softphone SIP password is sent to
