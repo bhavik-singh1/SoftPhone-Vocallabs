@@ -41,6 +41,8 @@ services:
       AMI_USER: ${AMI_USER}
       AMI_PASSWORD: ${AMI_PASSWORD}
       PUBLIC_IP: ${PUBLIC_IP}
+      METERED_TURN_USER: ${METERED_TURN_USER}
+      METERED_TURN_CRED: ${METERED_TURN_CRED}
     volumes:
       - ./infra/asterisk/conf:/etc/asterisk/templates:ro
       - ./infra/asterisk/entrypoint.sh:/entrypoint.sh:ro
