@@ -22,7 +22,7 @@ function turnCredentials() {
 // production issue short-lived per-session SIP credentials instead.
 sipRouter.get("/sip-config", requireAuth, (req, res) => {
   res.json({
-    wsServer: `wss://${config.sip.publicHost}:${config.sip.wssPort}`,
+    wsServer: config.sip.wsServer,
     sipUri: `sip:${config.sip.user}@${config.sip.publicHost}`,
     authorizationUser: config.sip.user,
     password: config.sip.password,

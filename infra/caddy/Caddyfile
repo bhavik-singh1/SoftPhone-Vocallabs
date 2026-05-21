@@ -1,0 +1,45 @@
+# =============================================================================
+#  Caddy — public TLS edge so the app lives at a clean https://softpad.tech
+#  (no :5173 / :8443 in the URL).
+#
+#  Caddy terminates Let's Encrypt TLS on :443 and reverse-proxies:
+#    /ws-sip   -> Kamailio plain-WS :8080   (SIP-over-WebSocket signalling)
+#    /api, /ws -> the frontend (Vite), which itself proxies them to backend:3000
+#    /         -> the frontend (Vite dev server)  [dashboard + Vite HMR]
+#
+#  The SIP-WS route is declared FIRST so it wins over the catch-all. Media
+#  (RTP/UDP, coturn) is unaffected — it never goes through Caddy.
+#
+#  {$SITE_DOMAIN} is provided by docker-compose (= PUBLIC_HOST). Caddy obtains
+#  and renews the cert automatically. We use the TLS-ALPN-01 challenge (port 443
+#  only) so port 80 stays free for the deploy script's certbot, which issues the
+#  separate cert Kamailio uses on its direct :8443 path. Disabling the automatic
+#  HTTP (:80) endpoint is what frees :80.
+# =============================================================================
+
+{
+	# Global options: only listen on HTTPS (:443); don't grab :80. ACME then uses
+	# the TLS-ALPN-01 challenge over :443, leaving :80 for certbot.
+	auto_https disable_redirects
+}
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	# SIP-over-WebSocket -> Kamailio's internal plain-WS listener.
+	@sip path /ws-sip /ws-sip/*
+	handle @sip {
+		reverse_proxy kamailio:8080
+	}
+
+	# Everything else -> the Vite frontend (which proxies /api and /ws to the
+	# backend internally). Vite serves HTTPS with the mounted cert, so tell Caddy
+	# the upstream is https and skip verifying that self-referential cert.
+	handle {
+		reverse_proxy https://frontend:5173 {
+			transport http {
+				tls_insecure_skip_verify
+			}
+		}
+	}
+}

@@ -98,8 +98,10 @@ services:
       - ./infra/kamailio/certs:/etc/kamailio/certs:ro
       - ./infra/kamailio/tls.cfg:/etc/kamailio/tls.cfg:ro
     ports:
-      - "8443:8443"                  # WSS (browser SIP signaling)
+      - "8443:8443"                  # WSS (browser SIP signaling, direct)
       - "5060:5060/udp"              # SIP UDP (optional, debugging)
+    expose:
+      - "8080"                       # plain WS for the Caddy proxy hop (internal)
     networks: [softphone-net]
     depends_on: [asterisk, rtpengine]
 
@@ -153,6 +155,26 @@ services:
     networks: [softphone-net]
     depends_on: [backend]
 
+  # ===== Caddy: public TLS edge so the app lives at clean https://${PUBLIC_HOST}
+  # (no :5173 / :8443 in the URL). Terminates Let's Encrypt TLS on 443 and
+  # reverse-proxies the dashboard, /api, /ws, and the SIP WebSocket (/ws-sip ->
+  # Kamailio plain-WS :8080). The old :5173 / :8443 stay open for transition. =====
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_DOMAIN: ${PUBLIC_HOST}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data                 # persists the issued cert across restarts
+      - caddy_config:/config
+    ports:
+      # Only :443 — Caddy uses the TLS-ALPN-01 ACME challenge (over 443), leaving
+      # :80 free for the deploy script's certbot (Kamailio's direct :8443 cert).
+      - "443:443"                        # the clean https://${PUBLIC_HOST}
+    networks: [softphone-net]
+    depends_on: [frontend, kamailio]
+
 networks:
   softphone-net:
     driver: bridge
@@ -166,3 +188,5 @@ networks:
 volumes:
   pg-data:
   recordings:
+  caddy_data:
+  caddy_config:

@@ -7,9 +7,14 @@ export const config = {
   // from SEED_USERS ("user:pass,..."; defaults to admin:admin123) on first boot.
 
   // SIP details handed to the browser so SIP.js can register over WSS.
+  // WS_SERVER lets you override the WebSocket URL. Default is the clean
+  // Caddy-fronted path wss://<host>/ws-sip (no port). Set WS_SERVER to
+  // wss://<host>:8443 to use Kamailio's direct WSS listener instead.
   sip: {
     publicHost: process.env.PUBLIC_HOST || "softphone.local",
-    wssPort: 8443,
+    wsServer:
+      process.env.WS_SERVER ||
+      `wss://${process.env.PUBLIC_HOST || "softphone.local"}/ws-sip`,
     user: process.env.SOFTPHONE_USER || "webrtc",
     password: process.env.SOFTPHONE_PASSWORD || "",
   },
