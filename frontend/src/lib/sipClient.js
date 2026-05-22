@@ -31,7 +31,17 @@ export class SipPhone {
       displayName: this.cfg.displayName,
       authorizationUsername: this.cfg.authorizationUser,
       authorizationPassword: this.cfg.password,
-      transportOptions: { server: this.cfg.wsServer },
+      transportOptions: {
+        server: this.cfg.wsServer,
+        // Send a CRLF keepalive ping over the SIP WebSocket every 15s. During an
+        // ESTABLISHED call all media rides the separate RTP path, so the SIP
+        // signalling WS goes idle — and an idle WS gets closed at ~30s (by the
+        // browser/proxy/TCP layer). When that socket dropped, SIP.js tore down
+        // the live session with a BYE, which is exactly why calls auto-ended at
+        // ~30s with healthy audio + connected ICE. Keeping the socket warm stops
+        // that. (15s < the 30s idle window, with margin.)
+        keepAliveInterval: 15,
+      },
       delegate: {
         // Inbound call: carrier dialed our DID → Asterisk is ringing the browser.
         onInvite: (invitation) => this._onIncoming(invitation),
