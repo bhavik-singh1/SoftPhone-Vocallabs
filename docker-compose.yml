@@ -98,16 +98,9 @@ services:
       - ./infra/kamailio/certs:/etc/kamailio/certs:ro
       - ./infra/kamailio/tls.cfg:/etc/kamailio/tls.cfg:ro
     ports:
-      - "8443:8443"                  # WSS (browser SIP signaling, direct)
+      - "8443:8443"                  # WSS — the browser's direct SIP signaling
       - "5060:5060/udp"              # SIP UDP (optional, debugging)
-    expose:
-      - "8080"                       # plain WS for the Caddy proxy hop (internal)
-    # Static IP so the cfg can force the WSS send-socket ($fs=tls:172.18.0.10:8443)
-    # for in-dialog requests to WS clients — the WS connection lookup is keyed by
-    # the local socket, so it must be a stable, real address (not advertised).
-    networks:
-      softphone-net:
-        ipv4_address: 172.18.0.10
+    networks: [softphone-net]
     depends_on: [asterisk, rtpengine]
 
   # ===== coturn: STUN/TURN for browser NAT traversal =====

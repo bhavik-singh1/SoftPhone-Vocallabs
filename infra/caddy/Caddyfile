@@ -2,13 +2,13 @@
 #  Caddy — public TLS edge so the app lives at a clean https://softpad.tech
 #  (no :5173 / :8443 in the URL).
 #
-#  Caddy terminates Let's Encrypt TLS on :443 and reverse-proxies:
-#    /ws-sip   -> Kamailio plain-WS :8080   (SIP-over-WebSocket signalling)
+#  Caddy terminates Let's Encrypt TLS on :443 and reverse-proxies the dashboard:
 #    /api, /ws -> the frontend (Vite), which itself proxies them to backend:3000
 #    /         -> the frontend (Vite dev server)  [dashboard + Vite HMR]
 #
-#  The SIP-WS route is declared FIRST so it wins over the catch-all. Media
-#  (RTP/UDP, coturn) is unaffected — it never goes through Caddy.
+#  SIP-over-WebSocket is NOT proxied here — the browser connects directly to
+#  Kamailio's WSS on :8443 (one ws socket = reliable in-dialog routing). Media
+#  (RTP/UDP, coturn) never goes through Caddy either.
 #
 #  {$SITE_DOMAIN} is provided by docker-compose (= PUBLIC_HOST). Caddy obtains
 #  and renews the cert automatically. We use the TLS-ALPN-01 challenge (port 443
@@ -26,18 +26,13 @@
 {$SITE_DOMAIN} {
 	encode zstd gzip
 
-	# SIP-over-WebSocket -> Kamailio's internal plain-WS listener.
-	# flush_interval -1 streams frames immediately (no buffering) so PING/PONG
-	# keepalives and SIP messages pass through promptly and the long-lived socket
-	# isn't held/closed by the proxy during quiet periods of a call.
-	@sip path /ws-sip /ws-sip/*
-	handle @sip {
-		reverse_proxy kamailio:8080 {
-			flush_interval -1
-		}
-	}
+	# NOTE: SIP-over-WebSocket is NOT proxied here. The browser connects directly
+	# to Kamailio over WSS at wss://softpad.tech:8443 (the backend hands out that
+	# URL). Proxying SIP-WS through Caddy created a second ws-bearing socket on
+	# Kamailio, which broke the in-dialog WS connection lookup and dropped calls
+	# at ~32s. Caddy only serves the dashboard (clean https://softpad.tech).
 
-	# Everything else -> the Vite frontend (which proxies /api and /ws to the
+	# Everything -> the Vite frontend (which proxies /api and /ws to the
 	# backend internally). Vite serves HTTPS with the mounted cert, so tell Caddy
 	# the upstream is https and skip verifying that self-referential cert.
 	handle {
