@@ -27,6 +27,11 @@ export const config = {
     outbound: process.env.TRUNK_CALLER_ID || "",
   },
 
+  // Trunk dialing — prefix prepended to dialed numbers (matches the dialplan).
+  trunk: {
+    prefix: process.env.TRUNK_PREFIX || "",
+  },
+
   // ICE servers for the browser (coturn). On a single LAN this is optional.
   turn: {
     publicIp: process.env.PUBLIC_IP || "127.0.0.1",

@@ -21,6 +21,8 @@ export const useStore = create((set) => ({
   historyVersion: 0,
   // { inbound, outbound } PSTN numbers shown on the dashboard.
   numbers: { inbound: "", outbound: "" },
+  // Active two-number conference: { room, legs:{phone_1,phone_2}, answeredAt } | null
+  conference: null,
   error: null,
 
   setRegistered: (registered) => set({ registered }),
@@ -28,6 +30,35 @@ export const useStore = create((set) => ({
   setNumbers: (numbers) => set({ numbers: numbers || { inbound: "", outbound: "" } }),
   setError: (error) => set({ error }),
   bumpHistory: () => set((s) => ({ historyVersion: s.historyVersion + 1 })),
+
+  // --- Conference (call two numbers at once) ---
+  startConferenceState: (room, phone1, phone2) =>
+    set({
+      conference: {
+        room,
+        answeredAt: null,
+        legs: {
+          phone_1: phone1 ? { number: phone1, status: "ringing" } : null,
+          phone_2: phone2 ? { number: phone2, status: "ringing" } : null,
+        },
+      },
+    }),
+  // Merge a live "conference" WS event (per-leg status updates).
+  updateConference: (evt) =>
+    set((s) => {
+      if (!s.conference || evt.room !== s.conference.room) return {};
+      if (evt.ended) return { conference: null };
+      const legs = { ...s.conference.legs };
+      for (const k of ["phone_1", "phone_2"]) {
+        if (evt.legs && evt.legs[k]) legs[k] = { ...(legs[k] || {}), ...evt.legs[k] };
+      }
+      const nowInCall = Object.values(legs).some(
+        (l) => l && (l.status === "in" || l.status === "answered")
+      );
+      const answeredAt = s.conference.answeredAt || (nowInCall ? Date.now() : null);
+      return { conference: { ...s.conference, legs, answeredAt } };
+    }),
+  endConferenceState: () => set({ conference: null }),
 
   startCall: (number) =>
     set({

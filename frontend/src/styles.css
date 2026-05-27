@@ -540,3 +540,65 @@ button:disabled { cursor: not-allowed; }
 .toast-btn:hover { filter: brightness(1.07); }
 
 .muted { color: var(--text-dim); }
+
+/* ---------------------------------------------------------------- Mode tabs */
+.mode-tabs {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  margin-bottom: 18px;
+}
+.mode-tab {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 9px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text-dim); font-size: 13px; font-weight: 500;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.mode-tab:hover { background: var(--hover); color: var(--text); }
+.mode-tab.active { background: var(--accent-soft); color: #c7c9ff; border-color: var(--border-strong); }
+
+/* ---------------------------------------------------------------- Multi-call */
+.multi-head { text-align: center; padding: 8px 0 20px; }
+.multi-title { font-size: 18px; font-weight: 600; }
+.multi-sub { color: var(--text-faint); font-size: 12.5px; margin-top: 4px; }
+.multi-fields { display: flex; flex-direction: column; gap: 14px; }
+.multi-fields .field span {
+  display: block; font-size: 12px; font-weight: 500;
+  color: var(--text-dim); margin-bottom: 6px;
+}
+.multi-fields input {
+  width: 100%; padding: 12px 14px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-size: 16px; font-variant-numeric: tabular-nums; letter-spacing: 0.02em;
+  outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.multi-fields input:focus { border-color: var(--accent); box-shadow: var(--ring); }
+.multi-action { display: flex; justify-content: center; margin-top: auto; padding-top: 26px; }
+
+/* ---------------------------------------------------------------- Conf legs */
+.conf-legs {
+  display: flex; flex-direction: column; gap: 10px;
+  margin: 30px auto 0; max-width: 300px; width: 100%;
+}
+.conf-leg {
+  display: flex; align-items: center; gap: 11px;
+  padding: 12px 14px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.leg-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.leg-dot.green { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+.leg-dot.amber { background: var(--amber); box-shadow: 0 0 0 3px rgba(245,158,11,0.16); animation: blink 1.2s ease-in-out infinite; }
+.leg-dot.red { background: var(--red); }
+.leg-dot.muted { background: var(--text-faint); }
+@keyframes blink { 50% { opacity: 0.35; } }
+.leg-num { flex: 1; font-size: 14.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.leg-status { font-size: 12px; font-weight: 600; }
+.leg-status.green { color: #4ade80; }
+.leg-status.amber { color: #fbbf24; }
+.leg-status.red { color: #f87171; }
+.leg-status.muted { color: var(--text-faint); }
+.conf-hint {
+  display: inline-flex; align-items: center; gap: 7px; justify-content: center;
+  color: var(--text-faint); font-size: 12px; padding-top: 4px;
+}

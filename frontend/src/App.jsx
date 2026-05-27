@@ -8,21 +8,28 @@ import Dialer from "./components/Dialer.jsx";
 import InCall from "./components/InCall.jsx";
 import IncomingCall from "./components/IncomingCall.jsx";
 import CallHistory from "./components/CallHistory.jsx";
+import { MultiCallForm, ConferenceCall } from "./components/Conference.jsx";
 import {
-  BrandMark, LogOutIcon, PhoneIncomingIcon, PhoneOutgoingIcon,
+  BrandMark, LogOutIcon, PhoneIncomingIcon, PhoneOutgoingIcon, PhoneIcon,
 } from "./components/icons.jsx";
 
 const USER_KEY = "sp_user";
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(!!getToken());
+  const [mode, setMode] = useState("single"); // "single" | "multi"
   const phoneRef = useRef(null);
   const wsRef = useRef(null);
+  // True while a conference is starting, so the browser leg the backend
+  // originates is auto-answered instead of showing the incoming-call popup.
+  const confStartingRef = useRef(false);
 
   const {
-    registered, currentCall, incomingCall, username, historyVersion, numbers, error,
+    registered, currentCall, incomingCall, username, historyVersion, numbers,
+    conference, error,
     setRegistered, setUsername, setError, startCall, updateCall, endCall,
     setIncoming, clearIncoming, acceptIncoming, bumpHistory, setNumbers,
+    startConferenceState, updateConference, endConferenceState,
   } = useStore();
 
   // Restore the display name across reloads.
@@ -42,7 +49,16 @@ export default function App() {
         const phone = new SipPhone(sipConfig, {
           onRegistered: () => setRegistered(true),
           onUnregistered: () => setRegistered(false),
-          onIncoming: (number) => setIncoming(number),
+          onIncoming: (number) => {
+            // If we just started a conference, this INVITE is the backend
+            // ringing our own leg into the room — auto-answer it (no popup).
+            if (confStartingRef.current) {
+              confStartingRef.current = false;
+              phoneRef.current?.answer();
+              return;
+            }
+            setIncoming(number);
+          },
           onSessionState: (state) => {
             const st = useStore.getState();
             if (state === SessionState.Establishing && st.currentCall) {
@@ -66,7 +82,16 @@ export default function App() {
         await phone.start();
 
         wsRef.current = connectEvents((evt) => {
+          // Live per-leg conference status (call-two-numbers feature).
+          if (evt.kind === "conference") {
+            updateConference(evt);
+            if (evt.ended) bumpHistory();
+            return;
+          }
           if (evt.type !== "call") return;
+          // Ignore single-call CDR noise while a conference is active (the
+          // conference legs also generate call events).
+          if (useStore.getState().conference) return;
           if (["dialing", "ringing", "answered"].includes(evt.status)) {
             updateCall({ status: evt.status });
           }
@@ -126,6 +151,26 @@ export default function App() {
   const handleDtmf = (tone) => phoneRef.current?.sendDtmf(tone);
   const handleSpeaker = (on) => phoneRef.current?.setSpeaker(on);
 
+  // Start a "call two numbers at once" conference.
+  const handleConferenceStart = async (phone1, phone2) => {
+    if (conference || currentCall) return;
+    try {
+      confStartingRef.current = true; // auto-answer our own leg when it rings
+      const { room } = await api.startConference(phone1, phone2);
+      startConferenceState(room, phone1, phone2);
+    } catch (e) {
+      confStartingRef.current = false;
+      setError(e.message);
+    }
+  };
+  const handleConferenceHangup = async () => {
+    const room = conference?.room;
+    endConferenceState();
+    phoneRef.current?.hangup(); // drop our browser leg
+    if (room) await api.endConference(room).catch(() => {});
+    bumpHistory();
+  };
+
   if (!loggedIn) return <Login onLogin={handleLogin} />;
 
   const initials = (username || "?").slice(0, 2).toUpperCase();
@@ -174,7 +219,9 @@ export default function App() {
               </div>
             </div>
           )}
-          {currentCall ? (
+          {conference ? (
+            <ConferenceCall conf={conference} onHangup={handleConferenceHangup} />
+          ) : currentCall ? (
             <InCall
               call={currentCall}
               onHangup={handleHangup}
@@ -183,7 +230,27 @@ export default function App() {
               onSpeaker={handleSpeaker}
             />
           ) : (
-            <Dialer onDial={handleDial} disabled={!registered} />
+            <>
+              <div className="mode-tabs">
+                <button
+                  className={`mode-tab ${mode === "single" ? "active" : ""}`}
+                  onClick={() => setMode("single")}
+                >
+                  <PhoneIcon size={15} /> Single call
+                </button>
+                <button
+                  className={`mode-tab ${mode === "multi" ? "active" : ""}`}
+                  onClick={() => setMode("multi")}
+                >
+                  <PhoneOutgoingIcon size={15} /> Call two
+                </button>
+              </div>
+              {mode === "single" ? (
+                <Dialer onDial={handleDial} disabled={!registered} />
+              ) : (
+                <MultiCallForm onStart={handleConferenceStart} disabled={!registered} />
+              )}
+            </>
           )}
         </section>
 

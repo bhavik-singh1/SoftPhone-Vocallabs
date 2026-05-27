@@ -14,8 +14,12 @@ export async function login(req, res) {
     if (!user || !verifyPassword(password, user.pass_hash)) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
+    // 7 days: a single-operator softphone shouldn't log you out overnight (the
+    // old 12h token expired between sessions -> "Invalid token" + stuck
+    // "Connecting…"). The frontend also auto-clears an expired token and returns
+    // to the login screen, so a lapse is a clean re-login rather than a freeze.
     const token = jwt.sign({ sub: user.username }, config.jwtSecret, {
-      expiresIn: "12h",
+      expiresIn: "7d",
     });
     return res.json({ token, username: user.username });
   } catch (err) {

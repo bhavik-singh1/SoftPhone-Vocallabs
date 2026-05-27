@@ -4,6 +4,11 @@ import { upsertCall } from "./db.js";
 import { broadcast } from "./ws.js";
 import { takeOutboundOwner, inboundOwner } from "./ownership.js";
 
+// The connected AMI instance, shared so the conference module can send
+// Originate/Hangup actions (set in startAmi()).
+let amiInstance = null;
+export const getAmi = () => amiInstance;
+
 // One CDR per call. Calls are keyed by Linkedid — Asterisk's per-call group id
 // that ALL legs of a call share. This is what collapses the carrier's forked
 // inbound legs (it rings the DID on two trunk endpoints at once) into a single
@@ -41,6 +46,7 @@ export function startAmi() {
     true
   );
   ami.keepConnected();
+  amiInstance = ami;
 
   ami.on("connect", () => console.log("[ami] connected to Asterisk"));
   ami.on("error", (err) => console.warn(`[ami] error: ${err?.message || err}`));
